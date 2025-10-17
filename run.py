@@ -1,5 +1,5 @@
 from app import create_app, db
-from models import User, MortgageListing
+from models import Lender, MortgageListing, MortgageApplication, ActiveMortgage
 
 app = create_app()
 
@@ -7,8 +7,10 @@ app = create_app()
 def make_shell_context():
     return {
         'db': db,
-        'User': User,
-        'MortgageListing': MortgageListing
+        'Lender': Lender,
+        'MortgageListing': MortgageListing,
+        'MortgageApplication': MortgageApplication,
+        'ActiveMortgage': ActiveMortgage
     }
 
 if __name__ == '__main__':
