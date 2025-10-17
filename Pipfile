@@ -10,7 +10,7 @@ flask-migrate = "*"
 flask-jwt-extended = "*"
 flask-cors = "*"
 flask-mail = "*"
-psycopg2-binary = "*"
+
 bcrypt = "*"
 cloudinary = "*"
 sendgrid = "*"
