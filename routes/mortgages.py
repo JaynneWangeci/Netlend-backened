@@ -20,11 +20,12 @@ def get_mortgages():
             'id': m.id,
             'property_title': m.property_title,
             'property_type': m.property_type.value,
-            'location': m.location,
-            'price_range': float(m.price_range),
+            'address': m.address,
+            'county': m.county.value,
+            'price_range': f"KSH {float(m.price_range):,.2f}",
             'interest_rate': m.interest_rate,
             'repayment_period': m.repayment_period,
-            'down_payment': m.down_payment,
+            'down_payment': f"KSH {m.down_payment:,.2f}",
             'eligibility_criteria': m.eligibility_criteria,
             'images': m.images,
             'lender_name': m.lender.institution_name
@@ -42,10 +43,15 @@ def create_mortgage():
     
     data = request.get_json()
     
+    # Validate images
+    if 'images' not in data or len(data['images']) != 5:
+        return jsonify({'message': 'Exactly 5 property images are required'}), 400
+    
     mortgage = MortgageListing(
         property_title=data['property_title'],
         property_type=data['property_type'],
-        location=data['location'],
+        address=data['address'],
+        county=data['county'],
         price_range=data['price_range'],
         interest_rate=data['interest_rate'],
         repayment_period=data['repayment_period'],
@@ -54,8 +60,7 @@ def create_mortgage():
         lender_id=lender_id
     )
     
-    if 'images' in data:
-        mortgage.images = upload_images(data['images'])
+    mortgage.images = upload_images(data['images'])
     
     db.session.add(mortgage)
     db.session.commit()
@@ -70,11 +75,12 @@ def get_mortgage(mortgage_id):
         'id': mortgage.id,
         'property_title': mortgage.property_title,
         'property_type': mortgage.property_type.value,
-        'location': mortgage.location,
-        'price_range': float(mortgage.price_range),
+        'address': mortgage.address,
+        'county': mortgage.county.value,
+        'price_range': f"KSH {float(mortgage.price_range):,.2f}",
         'interest_rate': mortgage.interest_rate,
         'repayment_period': mortgage.repayment_period,
-        'down_payment': mortgage.down_payment,
+        'down_payment': f"KSH {mortgage.down_payment:,.2f}",
         'eligibility_criteria': mortgage.eligibility_criteria,
         'images': mortgage.images,
         'lender': {
@@ -96,8 +102,9 @@ def get_my_listings():
         'id': m.id,
         'property_title': m.property_title,
         'property_type': m.property_type.value,
-        'location': m.location,
-        'price_range': float(m.price_range),
+        'address': m.address,
+        'county': m.county.value,
+        'price_range': f"KSH {float(m.price_range):,.2f}",
         'interest_rate': m.interest_rate,
         'status': m.status.value
     } for m in mortgages]), 200

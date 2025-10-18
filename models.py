@@ -38,6 +38,55 @@ class OfferStatus(Enum):
     DECLINED = "declined"
     EXPIRED = "expired"
 
+class KenyanCounty(Enum):
+    BARINGO = "Baringo"
+    BOMET = "Bomet"
+    BUNGOMA = "Bungoma"
+    BUSIA = "Busia"
+    ELGEYO_MARAKWET = "Elgeyo-Marakwet"
+    EMBU = "Embu"
+    GARISSA = "Garissa"
+    HOMA_BAY = "Homa Bay"
+    ISIOLO = "Isiolo"
+    KAJIADO = "Kajiado"
+    KAKAMEGA = "Kakamega"
+    KERICHO = "Kericho"
+    KIAMBU = "Kiambu"
+    KILIFI = "Kilifi"
+    KIRINYAGA = "Kirinyaga"
+    KISII = "Kisii"
+    KISUMU = "Kisumu"
+    KITUI = "Kitui"
+    KWALE = "Kwale"
+    LAIKIPIA = "Laikipia"
+    LAMU = "Lamu"
+    MACHAKOS = "Machakos"
+    MAKUENI = "Makueni"
+    MANDERA = "Mandera"
+    MARSABIT = "Marsabit"
+    MERU = "Meru"
+    MIGORI = "Migori"
+    MOMBASA = "Mombasa"
+    MURANG_A = "Murang'a"
+    NAIROBI = "Nairobi"
+    NAKURU = "Nakuru"
+    NANDI = "Nandi"
+    NAROK = "Narok"
+    NYAMIRA = "Nyamira"
+    NYANDARUA = "Nyandarua"
+    NYERI = "Nyeri"
+    SAMBURU = "Samburu"
+    SIAYA = "Siaya"
+    TAITA_TAVETA = "Taita-Taveta"
+    TANA_RIVER = "Tana River"
+    THARAKA_NITHI = "Tharaka-Nithi"
+    TRANS_NZOIA = "Trans Nzoia"
+    TURKANA = "Turkana"
+    UASIN_GISHU = "Uasin Gishu"
+    VIHIGA = "Vihiga"
+    WAJIR = "Wajir"
+    WEST_POKOT = "West Pokot"
+
 class Lender(db.Model):
     __tablename__ = 'lenders'
     
@@ -71,7 +120,8 @@ class MortgageListing(db.Model):
     lender_id = db.Column(db.Integer, db.ForeignKey('lenders.id'), nullable=False)
     property_title = db.Column(db.String(200), nullable=False)
     property_type = db.Column(db.Enum(PropertyType), nullable=False)
-    location = db.Column(db.String(100), nullable=False)
+    address = db.Column(db.String(255), nullable=False)
+    county = db.Column(db.Enum(KenyanCounty), nullable=False)
     price_range = db.Column(db.Numeric(15, 2), nullable=False)
     interest_rate = db.Column(db.Float, nullable=False)
     repayment_period = db.Column(db.Integer, nullable=False)  # years
