@@ -1,0 +1,108 @@
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.18:5000
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 644-028-315
+127.0.0.1 - - [18/Oct/2025 18:14:39] "OPTIONS /api/auth/register HTTP/1.1" 200 -
+127.0.0.1 - - [18/Oct/2025 18:20:15] "OPTIONS /api/auth/register HTTP/1.1" 200 -
+127.0.0.1 - - [18/Oct/2025 18:20:15] "[35m[1mPOST /api/auth/register HTTP/1.1[0m" 500 -
+Traceback (most recent call last):
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/Development/code/phase-5/Netlend-backened/routes/auth.py", line 18, in register
+    institution_name=data['institution_name'],
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'institution_name'
+127.0.0.1 - - [18/Oct/2025 18:20:33] "OPTIONS /api/auth/register HTTP/1.1" 200 -
+127.0.0.1 - - [18/Oct/2025 18:20:33] "[35m[1mPOST /api/auth/register HTTP/1.1[0m" 500 -
+Traceback (most recent call last):
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/Development/code/phase-5/Netlend-backened/routes/auth.py", line 18, in register
+    institution_name=data['institution_name'],
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'institution_name'
+127.0.0.1 - - [18/Oct/2025 18:25:01] "OPTIONS /api/auth/register HTTP/1.1" 200 -
+127.0.0.1 - - [18/Oct/2025 18:25:01] "[35m[1mPOST /api/auth/register HTTP/1.1[0m" 500 -
+Traceback (most recent call last):
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1536, in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1514, in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask_cors/extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/snap/code/210/.local/share/virtualenvs/Netlend-backened-ao1wH-sC/lib/python3.12/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ny4g4/Development/code/phase-5/Netlend-backened/routes/auth.py", line 18, in register
+    institution_name=data['institution_name'],
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'institution_name'
+ * Detected change in '/home/ny4g4/Development/code/phase-5/Netlend-backened/routes/auth.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 644-028-315

@@ -2,32 +2,49 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
 from models import Lender
-from utils.email import send_verification_email
+
 
 auth_bp = Blueprint('auth', __name__)
+
+@auth_bp.route('/debug', methods=['POST'])
+def debug():
+    data = request.get_json()
+    print(f"Debug - Received data: {data}")
+    return jsonify({'received': data}), 200
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    print(f"Registration data: {data}")
     
-    if Lender.query.filter_by(email=data['email']).first():
+    if not data:
+        return jsonify({'message': 'No data provided'}), 400
+        
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not email or not password:
+        return jsonify({'message': 'Email and password required'}), 400
+    
+    if Lender.query.filter_by(email=email).first():
         return jsonify({'message': 'Email already registered'}), 400
     
+    # Use any available name field
+    name = data.get('full_name') or data.get('name') or data.get('institution_name') or 'Lender'
+    
     lender = Lender(
-        email=data['email'],
-        institution_name=data['institution_name'],
-        contact_person=data['contact_person'],
-        phone_number=data.get('phone_number'),
-        business_registration_number=data.get('business_registration_number')
+        email=email,
+        institution_name=name,
+        contact_person=name,
+        phone_number=data.get('phone') or data.get('phone_number'),
+        verified=True
     )
-    lender.set_password(data['password'])
+    lender.set_password(password)
     
     db.session.add(lender)
     db.session.commit()
     
-    send_verification_email(lender.email, lender.id)
-    
-    return jsonify({'message': 'Registration successful. Please verify your email.'}), 201
+    return jsonify({'message': 'Registration successful'}), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
