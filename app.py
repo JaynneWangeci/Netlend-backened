@@ -44,6 +44,14 @@ feedback = [
     {"id": 2, "userId": 2, "message": "Needs improvement", "rating": 3, "status": "pending", "date": "2024-01-22"}
 ]
 
+properties = [
+    {"id": 1, "title": "Modern Villa in Karen", "price": 45000000, "location": "Karen", "bedrooms": 4, "bathrooms": 3, "sqft": 3200, "status": "available", "views": 245, "listedDate": "2024-01-05"},
+    {"id": 2, "title": "Apartment in Kilimani", "price": 12000000, "location": "Kilimani", "bedrooms": 2, "bathrooms": 2, "sqft": 1100, "status": "sold", "views": 189, "listedDate": "2023-12-15"},
+    {"id": 3, "title": "Townhouse in Runda", "price": 28000000, "location": "Runda", "bedrooms": 3, "bathrooms": 2, "sqft": 2400, "status": "available", "views": 312, "listedDate": "2024-01-10"},
+    {"id": 4, "title": "Penthouse in Westlands", "price": 35000000, "location": "Westlands", "bedrooms": 3, "bathrooms": 3, "sqft": 2800, "status": "pending", "views": 421, "listedDate": "2024-01-12"},
+    {"id": 5, "title": "Bungalow in Lavington", "price": 52000000, "location": "Lavington", "bedrooms": 5, "bathrooms": 4, "sqft": 4000, "status": "available", "views": 156, "listedDate": "2024-01-18"}
+]
+
 # JWT Helper Functions
 def generate_token(user):
     """Generate JWT token for user"""
@@ -252,6 +260,14 @@ def get_analytics():
     total_volume = sum(a['amount'] for a in applications)
     total_repayments = sum(r['amount'] for r in repayments if r['status'] == 'paid')
     
+    # Property analytics
+    total_properties = len(properties)
+    available_properties = len([p for p in properties if p['status'] == 'available'])
+    sold_properties = len([p for p in properties if p['status'] == 'sold'])
+    total_property_value = sum(p['price'] for p in properties)
+    avg_property_price = total_property_value / total_properties if total_properties > 0 else 0
+    total_views = sum(p['views'] for p in properties)
+    
     monthly_data = [
         {"month": "Jan", "applications": 15, "approvals": 12, "volume": 225000000},
         {"month": "Feb", "applications": 20, "approvals": 16, "volume": 310000000},
@@ -264,6 +280,23 @@ def get_analytics():
         {"month": "Mar", "homebuyers": 78, "lenders": 15}
     ]
     
+    property_trends = [
+        {"month": "Jan", "listed": 8, "sold": 3, "views": 1240},
+        {"month": "Feb", "listed": 12, "sold": 5, "views": 1890},
+        {"month": "Mar", "listed": 10, "sold": 4, "views": 1650}
+    ]
+    
+    location_stats = {}
+    for prop in properties:
+        loc = prop['location']
+        if loc not in location_stats:
+            location_stats[loc] = {'count': 0, 'totalValue': 0, 'avgPrice': 0}
+        location_stats[loc]['count'] += 1
+        location_stats[loc]['totalValue'] += prop['price']
+    
+    for loc in location_stats:
+        location_stats[loc]['avgPrice'] = location_stats[loc]['totalValue'] / location_stats[loc]['count']
+    
     return jsonify({
         "totalApplications": total_apps,
         "approvedLoans": approved_apps,
@@ -272,7 +305,18 @@ def get_analytics():
         "totalRepayments": total_repayments,
         "monthlyData": monthly_data,
         "userGrowth": user_growth,
-        "approvalRate": round((approved_apps / total_apps * 100) if total_apps > 0 else 0, 1)
+        "approvalRate": round((approved_apps / total_apps * 100) if total_apps > 0 else 0, 1),
+        "properties": {
+            "total": total_properties,
+            "available": available_properties,
+            "sold": sold_properties,
+            "pending": total_properties - available_properties - sold_properties,
+            "totalValue": total_property_value,
+            "avgPrice": round(avg_property_price, 2),
+            "totalViews": total_views,
+            "trends": property_trends,
+            "byLocation": location_stats
+        }
     })
 
 @app.route('/api/admin/feedback', methods=['GET'])
@@ -289,6 +333,11 @@ def moderate_feedback(feedback_id):
         fb['status'] = data.get('status', fb['status'])
         return jsonify(fb)
     return jsonify({"error": "Feedback not found"}), 404
+
+@app.route('/api/admin/properties', methods=['GET'])
+@admin_required
+def get_properties():
+    return jsonify(properties)
 
 @app.route('/api/admin/metrics', methods=['GET'])
 @admin_required
