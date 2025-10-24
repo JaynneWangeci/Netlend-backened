@@ -50,14 +50,15 @@ def create_app():
         from flask_jwt_extended import create_access_token
         data = request.json
         email = data.get('email')
+        password = data.get('password')
         
-        if not email:
-            return jsonify({"success": False, "error": "Email required"}), 400
+        if not email or not password:
+            return jsonify({"success": False, "error": "Email and password required"}), 400
         
-        # Check if admin user exists
+        # Check if admin user exists and verify password
         from models import Lender
         user = Lender.query.filter_by(email=email).first()
-        if user and 'admin' in email.lower():
+        if user and 'admin' in email.lower() and user.check_password(password):
             token = create_access_token(identity=user.id)
             return jsonify({
                 "success": True,
@@ -70,7 +71,7 @@ def create_app():
                 },
                 "token": token
             })
-        return jsonify({"success": False, "error": "Admin user not found"}), 401
+        return jsonify({"success": False, "error": "Invalid credentials"}), 401
     
     # Add health check and docs
     @app.route('/health')
@@ -91,6 +92,19 @@ def create_app():
         <p>POST /api/mortgages/ - Create mortgage listing</p>
         <p>GET /api/lender/{id}/mortgages - Get lender mortgages</p>
         </body></html>'''
+    
+    @app.route('/api/lenders', methods=['GET'])
+    def get_all_lenders():
+        """Get all lenders - public endpoint"""
+        from models import Lender
+        lenders = Lender.query.all()
+        return jsonify([{
+            'id': lender.id,
+            'name': lender.institution_name,
+            'email': lender.email,
+            'verified': lender.verified,
+            'createdAt': lender.created_at.strftime('%Y-%m-%d')
+        } for lender in lenders])
 
     return app
 

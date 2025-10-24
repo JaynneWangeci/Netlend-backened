@@ -219,3 +219,16 @@ def get_feedback():
 def moderate_feedback(feedback_id):
     """Moderate feedback - placeholder for now"""
     return jsonify({"success": True})
+
+@admin_bp.route('/lenders', methods=['GET'])
+@admin_required
+def get_lenders():
+    """Get all lenders"""
+    lenders = Lender.query.all()
+    return jsonify([{
+        'id': lender.id,
+        'name': lender.institution_name,
+        'email': lender.email,
+        'verified': lender.verified,
+        'createdAt': lender.created_at.strftime('%Y-%m-%d')
+    } for lender in lenders])
