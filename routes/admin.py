@@ -427,7 +427,14 @@ def get_analytics():
         from models import ApplicationStatus
         total_apps = MortgageApplication.query.count()
         approved_apps = MortgageApplication.query.filter_by(status=ApplicationStatus.APPROVED).count()
-        total_users = User.query.count()
+        
+        # Count users from all tables
+        legacy_users = User.query.count()
+        buyers_count = Buyer.query.count()
+        admins_count = Admin.query.count()
+        lenders_count = Lender.query.count()
+        total_users = legacy_users + buyers_count + admins_count + lenders_count
+        
         total_mortgages = MortgageListing.query.count()
         
         # Mock monthly data for now
@@ -438,9 +445,9 @@ def get_analytics():
         ]
         
         user_growth = [
-            {"month": "Oct", "homebuyers": 45, "lenders": total_users},
-            {"month": "Nov", "homebuyers": 62, "lenders": total_users},
-            {"month": "Dec", "homebuyers": 78, "lenders": total_users}
+            {"month": "Oct", "homebuyers": buyers_count, "lenders": lenders_count},
+            {"month": "Nov", "homebuyers": buyers_count, "lenders": lenders_count},
+            {"month": "Dec", "homebuyers": buyers_count, "lenders": lenders_count}
         ]
         
         return jsonify({
