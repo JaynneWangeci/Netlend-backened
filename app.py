@@ -105,6 +105,22 @@ def create_app():
         
         from models import User, Lender, Buyer, Admin
         
+        # Check User table (legacy admin)
+        user = User.query.filter_by(email=email).first()
+        if user and password and user.check_password(password):
+            token = create_access_token(identity=f"U{user.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": user.id,
+                    "name": user.name,
+                    "email": user.email,
+                    "userType": user.role.value,
+                    "verified": user.verified
+                },
+                "token": token
+            })
+        
         # Check Buyer table
         buyer = Buyer.query.filter_by(email=email).first()
         if buyer and password and buyer.check_password(password):

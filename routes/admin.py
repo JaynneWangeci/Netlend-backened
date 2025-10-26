@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from functools import wraps
 from app import db
-from models import User, Lender, MortgageListing, MortgageApplication
+from models import User, Lender, MortgageListing, MortgageApplication, Buyer, Admin
 from datetime import datetime
 
 admin_bp = Blueprint('admin', __name__)
@@ -37,13 +37,19 @@ def test_auth():
 @admin_bp.route('/users-bypass', methods=['GET'])
 def get_users_bypass():
     """Bypass authentication for testing"""
+    from models import Admin
+    
     users = User.query.all()
+    buyers = Buyer.query.all()
+    admins = Admin.query.all()
     lenders = Lender.query.all()
     
     all_users = []
+    
+    # Legacy users table
     for user in users:
         all_users.append({
-            'id': user.id,
+            'id': f'U{user.id}',
             'name': user.name,
             'email': user.email,
             'userType': user.role.value,
@@ -51,6 +57,29 @@ def get_users_bypass():
             'createdAt': user.created_at.strftime('%Y-%m-%d')
         })
     
+    # Buyers table
+    for buyer in buyers:
+        all_users.append({
+            'id': f'B{buyer.id}',
+            'name': buyer.name,
+            'email': buyer.email,
+            'userType': 'homebuyer',
+            'verified': buyer.verified,
+            'createdAt': buyer.created_at.strftime('%Y-%m-%d')
+        })
+    
+    # Admins table
+    for admin in admins:
+        all_users.append({
+            'id': f'A{admin.id}',
+            'name': admin.name,
+            'email': admin.email,
+            'userType': 'admin',
+            'verified': admin.verified,
+            'createdAt': admin.created_at.strftime('%Y-%m-%d')
+        })
+    
+    # Lenders table
     for lender in lenders:
         all_users.append({
             'id': f'L{lender.id}',
@@ -86,8 +115,13 @@ def get_analytics_bypass():
     from models import ApplicationStatus
     total_apps = MortgageApplication.query.count()
     approved_apps = MortgageApplication.query.filter_by(status=ApplicationStatus.APPROVED).count()
-    total_users = User.query.count() + Lender.query.count()
-    total_lenders = Lender.query.count()
+    
+    # Count users from all tables
+    legacy_users = User.query.count()
+    buyers_count = Buyer.query.count()
+    admins_count = Admin.query.count()
+    lenders_count = Lender.query.count()
+    total_users = legacy_users + buyers_count + admins_count + lenders_count
     
     return jsonify({
         "totalApplications": total_apps,
@@ -101,9 +135,9 @@ def get_analytics_bypass():
             {"month": "Dec", "applications": 18, "approvals": 14, "volume": 290000000}
         ],
         "userGrowth": [
-            {"month": "Oct", "homebuyers": 45, "lenders": total_lenders},
-            {"month": "Nov", "homebuyers": 62, "lenders": total_lenders},
-            {"month": "Dec", "homebuyers": 78, "lenders": total_lenders}
+            {"month": "Oct", "homebuyers": buyers_count, "lenders": lenders_count},
+            {"month": "Nov", "homebuyers": buyers_count, "lenders": lenders_count},
+            {"month": "Dec", "homebuyers": buyers_count, "lenders": lenders_count}
         ],
         "approvalRate": round((approved_apps / total_apps * 100) if total_apps > 0 else 0, 1)
     })
@@ -119,14 +153,25 @@ def admin_required(f):
             from flask_jwt_extended import decode_token
             token = auth_header.split(' ')[1]
             decoded = decode_token(token)
-            user_id = int(decoded['sub'])
+            user_id_str = decoded['sub']
             
-            user = User.query.get(user_id)
-            if not user or user.role.value != 'admin':
-                return jsonify({'error': 'Admin access required'}), 403
+            # Handle U prefix for legacy users table
+            if user_id_str.startswith('U'):
+                user_id = int(user_id_str[1:])
+                user = User.query.get(user_id)
+                if user and user.role.value == 'admin':
+                    return f(*args, **kwargs)
             
-            return f(*args, **kwargs)
-        except:
+            # Handle A prefix for admins table
+            elif user_id_str.startswith('A'):
+                from models import Admin
+                admin_id = int(user_id_str[1:])
+                admin = Admin.query.get(admin_id)
+                if admin:
+                    return f(*args, **kwargs)
+            
+            return jsonify({'error': 'Admin access required'}), 403
+        except Exception as e:
             return jsonify({'error': 'Invalid token'}), 401
     return decorated_function
 
@@ -158,26 +203,60 @@ def get_users_temp():
 @admin_required
 def get_users():
     """Get all users"""
-    try:
-        users = User.query.all()
-        return jsonify([{
-            'id': user.id,
+    from models import Admin
+    
+    users = User.query.all()
+    buyers = Buyer.query.all()
+    admins = Admin.query.all()
+    lenders = Lender.query.all()
+    
+    all_users = []
+    
+    # Legacy users table
+    for user in users:
+        all_users.append({
+            'id': f'U{user.id}',
             'name': user.name,
             'email': user.email,
             'userType': user.role.value,
             'verified': user.verified,
             'createdAt': user.created_at.strftime('%Y-%m-%d')
-        } for user in users])
-    except Exception as e:
-        # Return mock data if database fails
-        return jsonify([{
-            'id': 1,
-            'name': 'Aaaqil West',
-            'email': 'aaaqilwest@netland.com',
+        })
+    
+    # Buyers table
+    for buyer in buyers:
+        all_users.append({
+            'id': f'B{buyer.id}',
+            'name': buyer.name,
+            'email': buyer.email,
+            'userType': 'homebuyer',
+            'verified': buyer.verified,
+            'createdAt': buyer.created_at.strftime('%Y-%m-%d')
+        })
+    
+    # Admins table
+    for admin in admins:
+        all_users.append({
+            'id': f'A{admin.id}',
+            'name': admin.name,
+            'email': admin.email,
             'userType': 'admin',
-            'verified': True,
-            'createdAt': '2024-01-01'
-        }])
+            'verified': admin.verified,
+            'createdAt': admin.created_at.strftime('%Y-%m-%d')
+        })
+    
+    # Lenders table
+    for lender in lenders:
+        all_users.append({
+            'id': f'L{lender.id}',
+            'name': lender.institution_name,
+            'email': lender.email,
+            'userType': 'lender',
+            'verified': lender.verified,
+            'createdAt': lender.created_at.strftime('%Y-%m-%d')
+        })
+    
+    return jsonify(all_users)
 
 @admin_bp.route('/users', methods=['POST'])
 @admin_required
