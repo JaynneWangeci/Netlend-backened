@@ -38,14 +38,26 @@ def create_app():
     )
 
     # Import and register blueprints
-    from routes.auth import auth_bp
-    from routes.mortgages import mortgages_bp
-    from routes.admin import admin_bp
-
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(mortgages_bp, url_prefix='/api/mortgages')
-    app.register_blueprint(mortgages_bp, url_prefix='/api', name='lender_routes')
-    app.register_blueprint(admin_bp, url_prefix='/api/admin')
+    try:
+        from routes.admin import admin_bp
+        app.register_blueprint(admin_bp, url_prefix='/api/admin')
+        print("✅ Admin routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register admin routes: {e}")
+    
+    try:
+        from routes.mortgages import mortgages_bp
+        app.register_blueprint(mortgages_bp, url_prefix='/api/mortgages')
+        print("✅ Mortgage routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register mortgage routes: {e}")
+    
+    try:
+        from routes.auth import auth_bp
+        app.register_blueprint(auth_bp, url_prefix='/api/auth')
+        print("✅ Auth routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register auth routes: {e}")
     
     # Role-based middleware
     def token_required(allowed_roles=None):
@@ -54,11 +66,10 @@ def create_app():
             @jwt_required()
             def decorated_function(*args, **kwargs):
                 user_id = get_jwt_identity()
-                from models import Lender
-                user = Lender.query.get_or_404(user_id)
+                from models import User
+                user = User.query.get_or_404(user_id)
                 
-                # Determine user role
-                user_role = 'admin' if 'admin' in user.email.lower() else 'lender'
+                user_role = user.role.value
                 
                 if allowed_roles and user_role not in allowed_roles:
                     return jsonify({'error': f'Access denied. Required roles: {", ".join(allowed_roles)}'}), 403
@@ -78,34 +89,18 @@ def create_app():
         if not email:
             return jsonify({"success": False, "error": "Email required"}), 400
         
-        from models import Lender
-        user = Lender.query.filter_by(email=email).first()
+        from models import User
+        user = User.query.filter_by(email=email).first()
         
-        # Handle admin login
-        if user and 'admin' in email.lower():
-            if password and user.check_password(password):
-                token = create_access_token(identity=user.id)
-                return jsonify({
-                    "success": True,
-                    "user": {
-                        "id": user.id,
-                        "name": user.institution_name,
-                        "email": user.email,
-                        "userType": "admin",
-                        "verified": user.verified
-                    },
-                    "token": token
-                })
-        # Handle regular user login (existing lender login logic)
-        elif user:
-            token = create_access_token(identity=user.id)
+        if user and password and user.check_password(password):
+            token = create_access_token(identity=str(user.id))
             return jsonify({
                 "success": True,
                 "user": {
                     "id": user.id,
-                    "name": user.institution_name,
+                    "name": user.name,
                     "email": user.email,
-                    "userType": "lender",
+                    "userType": user.role.value,
                     "verified": user.verified
                 },
                 "token": token
@@ -117,36 +112,46 @@ def create_app():
     def register():
         data = request.json
         
-        required_fields = ['institution_name', 'contact_person', 'email']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({"success": False, "error": f"{field} is required"}), 400
+        # Handle both frontend formats: 'name' or 'institution_name'
+        name = data.get('name') or data.get('institution_name')
+        contact_person = data.get('contact_person') or name
+        email = data.get('email')
         
-        from models import Lender
-        if Lender.query.filter_by(email=data['email']).first():
+        if not name or not email:
+            return jsonify({"success": False, "error": "Name and email are required"}), 400
+        
+        from models import User, UserRole
+        if User.query.filter_by(email=email).first():
             return jsonify({"success": False, "error": "User already exists"}), 409
         
-        new_user = Lender(
-            institution_name=data['institution_name'],
-            contact_person=data['contact_person'],
-            email=data['email'],
-            phone_number=data.get('phone_number'),
-            business_registration_number=data.get('business_registration_number'),
-            verified='admin' in data['email'].lower()
+        # Determine user role
+        user_type = data.get('userType', 'lender')
+        if user_type == 'admin':
+            role = UserRole.ADMIN
+        elif user_type == 'homebuyer':
+            role = UserRole.HOMEBUYER
+        else:
+            role = UserRole.LENDER
+            
+        new_user = User(
+            name=name,
+            email=email,
+            role=role,
+            verified=role == UserRole.ADMIN
         )
         new_user.set_password(data.get('password', 'defaultpass'))
         
         db.session.add(new_user)
         db.session.commit()
         
-        token = create_access_token(identity=new_user.id)
+        token = create_access_token(identity=str(new_user.id))
         return jsonify({
             "success": True,
             "user": {
                 "id": new_user.id,
-                "name": new_user.institution_name,
+                "name": new_user.name,
                 "email": new_user.email,
-                "userType": "admin" if 'admin' in new_user.email.lower() else "lender",
+                "userType": new_user.role.value,
                 "verified": new_user.verified
             },
             "token": token
@@ -181,6 +186,20 @@ def create_app():
     def health_check():
         return jsonify({"status": "healthy", "message": "NetLend API is running"})
     
+    @app.route('/api/debug/admin', methods=['GET'])
+    def debug_admin():
+        """Debug endpoint to test admin functionality"""
+        return jsonify({
+            "message": "Admin debug endpoint working",
+            "timestamp": datetime.now().isoformat(),
+            "routes_available": [
+                "/api/admin/test",
+                "/api/admin/users", 
+                "/api/admin/properties",
+                "/api/admin/analytics"
+            ]
+        })
+    
     @app.route('/docs')
     def swagger_docs():
         return '''<!DOCTYPE html>
@@ -209,4 +228,4 @@ if __name__ == '__main__':
     print("📍 API: http://localhost:5000")
     print("📚 Docs: http://localhost:5000/docs")
     print("💚 Health: http://localhost:5000/health")
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    app.run(debug=True, port=5001, host='0.0.0.0')
