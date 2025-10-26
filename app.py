@@ -59,6 +59,20 @@ def create_app():
     except Exception as e:
         print(f"❌ Failed to register auth routes: {e}")
     
+    try:
+        from routes.homebuyer import homebuyer_bp
+        app.register_blueprint(homebuyer_bp, url_prefix='/api/homebuyer')
+        print("✅ Homebuyer routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register homebuyer routes: {e}")
+    
+    try:
+        from routes.lender import lender_bp
+        app.register_blueprint(lender_bp, url_prefix='/api/lender')
+        print("✅ Lender routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register lender routes: {e}")
+    
     # Role-based middleware
     def token_required(allowed_roles=None):
         def decorator(f):
@@ -89,19 +103,52 @@ def create_app():
         if not email:
             return jsonify({"success": False, "error": "Email required"}), 400
         
-        from models import User
-        user = User.query.filter_by(email=email).first()
+        from models import User, Lender, Buyer, Admin
         
-        if user and password and user.check_password(password):
-            token = create_access_token(identity=str(user.id))
+        # Check Buyer table
+        buyer = Buyer.query.filter_by(email=email).first()
+        if buyer and password and buyer.check_password(password):
+            token = create_access_token(identity=f"B{buyer.id}")
             return jsonify({
                 "success": True,
                 "user": {
-                    "id": user.id,
-                    "name": user.name,
-                    "email": user.email,
-                    "userType": user.role.value,
-                    "verified": user.verified
+                    "id": buyer.id,
+                    "name": buyer.name,
+                    "email": buyer.email,
+                    "userType": "homebuyer",
+                    "verified": buyer.verified
+                },
+                "token": token
+            })
+        
+        # Check Admin table
+        admin = Admin.query.filter_by(email=email).first()
+        if admin and password and admin.check_password(password):
+            token = create_access_token(identity=f"A{admin.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": admin.id,
+                    "name": admin.name,
+                    "email": admin.email,
+                    "userType": "admin",
+                    "verified": admin.verified
+                },
+                "token": token
+            })
+        
+        # Check Lender table
+        lender = Lender.query.filter_by(email=email).first()
+        if lender and password and lender.check_password(password):
+            token = create_access_token(identity=f"L{lender.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": lender.id,
+                    "name": lender.institution_name,
+                    "email": lender.email,
+                    "userType": "lender",
+                    "verified": lender.verified
                 },
                 "token": token
             })
@@ -112,50 +159,92 @@ def create_app():
     def register():
         data = request.json
         
-        # Handle both frontend formats: 'name' or 'institution_name'
         name = data.get('name') or data.get('institution_name')
-        contact_person = data.get('contact_person') or name
         email = data.get('email')
+        user_type = data.get('userType', 'lender')
         
         if not name or not email:
             return jsonify({"success": False, "error": "Name and email are required"}), 400
         
-        from models import User, UserRole
-        if User.query.filter_by(email=email).first():
+        from models import User, UserRole, Lender, Buyer, Admin
+        
+        # Check if email exists in any table
+        if (User.query.filter_by(email=email).first() or 
+            Lender.query.filter_by(email=email).first() or
+            Buyer.query.filter_by(email=email).first() or
+            Admin.query.filter_by(email=email).first()):
             return jsonify({"success": False, "error": "User already exists"}), 409
         
-        # Determine user role
-        user_type = data.get('userType', 'lender')
-        if user_type == 'admin':
-            role = UserRole.ADMIN
-        elif user_type == 'homebuyer':
-            role = UserRole.HOMEBUYER
-        else:
-            role = UserRole.LENDER
+        if user_type in ['homebuyer', 'buyer']:
+            # Create in Buyer table
+            buyer = Buyer(
+                name=name,
+                email=email,
+                verified=True
+            )
+            buyer.set_password(data.get('password', 'defaultpass'))
+            db.session.add(buyer)
+            db.session.commit()
             
-        new_user = User(
-            name=name,
-            email=email,
-            role=role,
-            verified=role == UserRole.ADMIN
-        )
-        new_user.set_password(data.get('password', 'defaultpass'))
-        
-        db.session.add(new_user)
-        db.session.commit()
-        
-        token = create_access_token(identity=str(new_user.id))
-        return jsonify({
-            "success": True,
-            "user": {
-                "id": new_user.id,
-                "name": new_user.name,
-                "email": new_user.email,
-                "userType": new_user.role.value,
-                "verified": new_user.verified
-            },
-            "token": token
-        }), 201
+            token = create_access_token(identity=f"B{buyer.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": buyer.id,
+                    "name": buyer.name,
+                    "email": buyer.email,
+                    "userType": "homebuyer",
+                    "verified": buyer.verified
+                },
+                "token": token
+            }), 201
+        elif user_type == 'admin':
+            # Create in Admin table
+            admin = Admin(
+                name=name,
+                email=email,
+                verified=True
+            )
+            admin.set_password(data.get('password', 'defaultpass'))
+            db.session.add(admin)
+            db.session.commit()
+            
+            token = create_access_token(identity=f"A{admin.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": admin.id,
+                    "name": admin.name,
+                    "email": admin.email,
+                    "userType": "admin",
+                    "verified": admin.verified
+                },
+                "token": token
+            }), 201
+        else:
+            # Create in Lender table
+            lender = Lender(
+                email=email,
+                institution_name=name,
+                contact_person=name,
+                verified=True
+            )
+            lender.set_password(data.get('password', 'defaultpass'))
+            db.session.add(lender)
+            db.session.commit()
+            
+            token = create_access_token(identity=f"L{lender.id}")
+            return jsonify({
+                "success": True,
+                "user": {
+                    "id": lender.id,
+                    "name": lender.institution_name,
+                    "email": lender.email,
+                    "userType": "lender",
+                    "verified": lender.verified
+                },
+                "token": token
+            }), 201
 
     @app.route('/api/validate-token', methods=['POST'])
     @token_required()
@@ -199,6 +288,18 @@ def create_app():
                 "/api/admin/analytics"
             ]
         })
+    
+    @app.route('/api/loan-products', methods=['GET'])
+    def get_loan_products():
+        from models import MortgageListing
+        listings = MortgageListing.query.all()
+        return jsonify([{
+            'id': listing.id,
+            'lender': listing.lender.institution_name,
+            'rate': listing.interest_rate,
+            'term': listing.repayment_period,
+            'maxAmount': float(listing.price_range)
+        } for listing in listings])
     
     @app.route('/docs')
     def swagger_docs():

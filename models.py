@@ -109,6 +109,39 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+class Buyer(db.Model):
+    __tablename__ = 'buyers'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    phone_number = db.Column(db.String(20))
+    verified = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class Admin(db.Model):
+    __tablename__ = 'admins'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    verified = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 class Lender(db.Model):
     __tablename__ = 'lenders'
     
@@ -229,3 +262,34 @@ class LenderAnalytics(db.Model):
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     lender = db.relationship('Lender', backref='analytics')
+
+class SavedProperty(db.Model):
+    __tablename__ = 'saved_properties'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    buyer_id = db.Column(db.Integer, db.ForeignKey('buyers.id'), nullable=False)
+    listing_id = db.Column(db.Integer, db.ForeignKey('mortgage_listings.id'), nullable=False)
+    saved_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class PreApproval(db.Model):
+    __tablename__ = 'pre_approvals'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    buyer_id = db.Column(db.Integer, db.ForeignKey('buyers.id'), nullable=False)
+    lender_id = db.Column(db.Integer, db.ForeignKey('lenders.id'), nullable=False)
+    approved_amount = db.Column(db.Float, nullable=False)
+    interest_rate = db.Column(db.Float, nullable=False)
+    valid_until = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(ApplicationStatus), default=ApplicationStatus.PENDING)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Feedback(db.Model):
+    __tablename__ = 'feedback'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    buyer_id = db.Column(db.Integer, db.ForeignKey('buyers.id'), nullable=True)
+    lender_id = db.Column(db.Integer, db.ForeignKey('lenders.id'), nullable=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
