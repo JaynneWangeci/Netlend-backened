@@ -26,6 +26,7 @@ def get_mortgages():
             'id': m.id,
             'property_title': m.property_title,
             'property_type': m.property_type.value,
+            'bedrooms': m.bedrooms,
             'address': m.address,
             'county': m.county.value,
             'price_range': f"KSH {float(m.price_range):,.2f}",
@@ -50,6 +51,7 @@ def create_mortgage():
         mortgage = MortgageListing(
             property_title=data.get('subject', 'Default Title'),
             property_type=data.get('property_type', 'apartment').upper(),
+            bedrooms=data.get('bedrooms', 3),
             address=data.get('address', 'Default Address'),
             county=data.get('county', 'Nairobi').upper().replace(' ', '_'),
             price_range=1000000,
@@ -78,6 +80,7 @@ def get_lender_mortgages(lender_id):
                     'id': m.id,
                     'property_title': m.property_title,
                     'property_type': str(m.property_type.value) if hasattr(m.property_type, 'value') else str(m.property_type),
+                    'bedrooms': m.bedrooms,
                     'address': m.address,
                     'county': str(m.county.value) if hasattr(m.county, 'value') else str(m.county),
                     'price_range': f"KSH {float(m.price_range):,.2f}",
@@ -136,3 +139,29 @@ def get_my_listings():
         'interest_rate': m.interest_rate,
         'status': m.status.value
     } for m in mortgages]), 200
+
+@mortgages_bp.route('/<int:listing_id>', methods=['PATCH'])
+def update_mortgage(listing_id):
+    try:
+        data = request.get_json()
+        listing = MortgageListing.query.get_or_404(listing_id)
+        
+        if 'subject' in data:
+            listing.property_title = data['subject']
+        if 'property_type' in data:
+            listing.property_type = data['property_type'].upper()
+        if 'bedrooms' in data:
+            listing.bedrooms = data['bedrooms']
+        if 'address' in data:
+            listing.address = data['address']
+        if 'county' in data:
+            listing.county = data['county'].upper().replace(' ', '_')
+        
+        db.session.commit()
+        
+        return jsonify({
+            'id': listing.id,
+            'message': 'Mortgage listing updated successfully'
+        })
+    except Exception as e:
+        return jsonify({'message': f'Error: {str(e)}'}), 500

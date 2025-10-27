@@ -175,6 +175,7 @@ class MortgageListing(db.Model):
     lender_id = db.Column(db.Integer, db.ForeignKey('lenders.id'), nullable=False)
     property_title = db.Column(db.String(200), nullable=False)
     property_type = db.Column(db.Enum(PropertyType), nullable=False)
+    bedrooms = db.Column(db.Integer, nullable=False, default=3)
     address = db.Column(db.String(255), nullable=False)
     county = db.Column(db.Enum(KenyanCounty), nullable=False)
     price_range = db.Column(db.Numeric(15, 2), nullable=False)
