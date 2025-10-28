@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from models import Lender, MortgageListing, MortgageApplication
+from models import Lender, MortgageListing, MortgageApplication, Buyer
 
 lender_bp = Blueprint('lender', __name__)
 
@@ -44,25 +44,44 @@ def get_dashboard():
 def get_applications():
     user_id = get_jwt_identity()
     lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    print(f"Debug: user_id={user_id}, lender_id={lender_id}")
     
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).all()
+    print(f"Debug: Found {len(applications)} applications for lender {lender_id}")
     
-    return jsonify([{
-        'id': app.id,
-        'applicant': f'Buyer {app.borrower_id}',
-        'amount': app.requested_amount,
-        'status': app.status.value,
-        'submittedAt': app.submitted_at.strftime('%Y-%m-%d')
-    } for app in applications])
+    result = []
+    for app in applications:
+        buyer = Buyer.query.get(app.borrower_id)
+        result.append({
+            'id': app.id,
+            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'amount': app.requested_amount,
+            'status': app.status.value,
+            'property': app.listing.property_title if app.listing else 'Unknown Property',
+            'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+            'notes': app.notes
+        })
+    return jsonify(result)
 
 @lender_bp.route('/<int:lender_id>/applications', methods=['GET'])
 def get_lender_applications(lender_id):
+    print(f"Debug: Direct lender_id={lender_id}")
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).all()
+    print(f"Debug: Found {len(applications)} applications for lender {lender_id}")
     
-    return jsonify([{
-        'id': app.id,
-        'applicant': f'Buyer {app.borrower_id}',
-        'amount': app.requested_amount,
-        'status': app.status.value,
-        'submittedAt': app.submitted_at.strftime('%Y-%m-%d')
-    } for app in applications])
+    result = []
+    for app in applications:
+        buyer = Buyer.query.get(app.borrower_id)
+        result.append({
+            'id': app.id,
+            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'applicantName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'buyerName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'name': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'amount': app.requested_amount,
+            'status': app.status.value,
+            'property': app.listing.property_title if app.listing else 'Unknown Property',
+            'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+            'notes': app.notes
+        })
+    return jsonify(result)

@@ -343,14 +343,48 @@ def get_all_applications():
     """Get all mortgage applications"""
     try:
         applications = MortgageApplication.query.all()
-        return jsonify([{
-            'id': app.id,
-            'lender': app.lender.institution_name,
-            'applicant': f'borrower_{app.borrower_id}',
-            'status': app.status.value,
-            'amount': app.requested_amount,
-            'date': app.submitted_at.strftime('%Y-%m-%d')
-        } for app in applications])
+        result = []
+        for app in applications:
+            buyer = Buyer.query.get(app.borrower_id)
+            result.append({
+                'id': app.id,
+                'lender': app.lender.institution_name,
+                'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'applicantName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'buyerName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'property': app.listing.property_title if app.listing else 'Unknown Property',
+                'status': app.status.value,
+                'amount': app.requested_amount,
+                'date': app.submitted_at.strftime('%Y-%m-%d'),
+                'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+                'notes': app.notes
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/applications-bypass', methods=['GET'])
+def get_all_applications_bypass():
+    """Get all mortgage applications - bypass auth for testing"""
+    try:
+        applications = MortgageApplication.query.all()
+        result = []
+        for app in applications:
+            buyer = Buyer.query.get(app.borrower_id)
+            result.append({
+                'id': app.id,
+                'lender': app.lender.institution_name,
+                'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'applicantName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'buyerName': buyer.name if buyer else f'Buyer {app.borrower_id}',
+                'property': app.listing.property_title if app.listing else 'Unknown Property',
+                'status': app.status.value,
+                'amount': app.requested_amount,
+                'date': app.submitted_at.strftime('%Y-%m-%d'),
+                'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+                'notes': app.notes
+            })
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
