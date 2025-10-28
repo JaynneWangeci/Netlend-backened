@@ -19,6 +19,7 @@ def get_lender_mortgages(lender_id):
         'rate': listing.interest_rate,
         'term': listing.repayment_period,
         'status': listing.status.value,
+        'images': listing.images if listing.images else [],
         'createdAt': listing.created_at.strftime('%Y-%m-%d')
     } for listing in listings])
 

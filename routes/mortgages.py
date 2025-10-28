@@ -47,6 +47,7 @@ def create_mortgage():
     try:
         lender_id = 1  # Hardcoded for testing
         data = request.get_json()
+        print(f"Creating mortgage with data: {data}")  # Debug log
         
         mortgage = MortgageListing(
             property_title=data.get('subject', 'Default Title'),
@@ -54,10 +55,12 @@ def create_mortgage():
             bedrooms=data.get('bedrooms', 3),
             address=data.get('address', 'Default Address'),
             county=data.get('county', 'Nairobi').upper().replace(' ', '_'),
-            price_range=1000000,
-            interest_rate=12.0,
-            repayment_period=25,
-            down_payment=200000,
+            price_range=data.get('price_range', 1000000),
+            interest_rate=data.get('interest_rate', 12.0),
+            repayment_period=data.get('repayment_period', 25),
+            down_payment=data.get('down_payment', 200000),
+            eligibility_criteria=data.get('eligibility_criteria', ''),
+            images=data.get('images', []),
             lender_id=lender_id
         )
         
@@ -87,6 +90,7 @@ def get_lender_mortgages(lender_id):
                     'interest_rate': m.interest_rate,
                     'repayment_period': m.repayment_period,
                     'down_payment': f"KSH {m.down_payment:,.2f}",
+                    'images': m.images if m.images else [],
                     'status': str(m.status.value) if hasattr(m.status, 'value') else str(m.status)
                 })
             except Exception as enum_error:
@@ -133,10 +137,12 @@ def get_my_listings():
         'id': m.id,
         'property_title': m.property_title,
         'property_type': m.property_type.value,
+        'bedrooms': m.bedrooms,
         'address': m.address,
         'county': m.county.value,
         'price_range': f"KSH {float(m.price_range):,.2f}",
         'interest_rate': m.interest_rate,
+        'images': m.images if m.images else [],
         'status': m.status.value
     } for m in mortgages]), 200
 
@@ -152,10 +158,22 @@ def update_mortgage(listing_id):
             listing.property_type = data['property_type'].upper()
         if 'bedrooms' in data:
             listing.bedrooms = data['bedrooms']
+        if 'images' in data:
+            listing.images = data['images']
         if 'address' in data:
             listing.address = data['address']
         if 'county' in data:
             listing.county = data['county'].upper().replace(' ', '_')
+        if 'price_range' in data:
+            listing.price_range = data['price_range']
+        if 'interest_rate' in data:
+            listing.interest_rate = data['interest_rate']
+        if 'repayment_period' in data:
+            listing.repayment_period = data['repayment_period']
+        if 'down_payment' in data:
+            listing.down_payment = data['down_payment']
+        if 'eligibility_criteria' in data:
+            listing.eligibility_criteria = data['eligibility_criteria']
         
         db.session.commit()
         
@@ -165,3 +183,20 @@ def update_mortgage(listing_id):
         })
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
+
+@mortgages_bp.route('/<int:listing_id>', methods=['DELETE'])
+def delete_mortgage(listing_id):
+    try:
+        listing = MortgageListing.query.get_or_404(listing_id)
+        db.session.delete(listing)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Mortgage deleted successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
