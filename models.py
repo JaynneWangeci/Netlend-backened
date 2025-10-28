@@ -154,6 +154,29 @@ class Lender(db.Model):
     business_registration_number = db.Column(db.String(50))
     verified = db.Column(db.Boolean, default=False)
     logo_url = db.Column(db.String(255))
+    
+    # Company Details
+    company_type = db.Column(db.String(50))  # Bank, SACCO, Microfinance, etc.
+    website = db.Column(db.String(255))
+    established_year = db.Column(db.Integer)
+    license_number = db.Column(db.String(100))
+    
+    # Address Information
+    street_address = db.Column(db.String(255))
+    city = db.Column(db.String(100))
+    county = db.Column(db.Enum(KenyanCounty))
+    postal_code = db.Column(db.String(20))
+    
+    # Additional Contact Information
+    secondary_phone = db.Column(db.String(20))
+    fax_number = db.Column(db.String(20))
+    customer_service_email = db.Column(db.String(120))
+    
+    # Business Information
+    description = db.Column(db.Text)
+    services_offered = db.Column(db.JSON)  # Array of services
+    operating_hours = db.Column(db.JSON)  # Business hours
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships

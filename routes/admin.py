@@ -34,6 +34,43 @@ def test_auth():
         print(f"DEBUG: JWT test exception: {str(e)}")
         return jsonify({'error': str(e)}), 422
 
+@admin_bp.route('/lenders-bypass', methods=['GET'])
+def get_lenders_bypass():
+    """Get all lenders with detailed information - bypass auth for testing"""
+    lenders = Lender.query.all()
+    return jsonify([{
+        'id': lender.id,
+        'institutionName': lender.institution_name,
+        'contactPerson': lender.contact_person,
+        'email': lender.email,
+        'phoneNumber': lender.phone_number,
+        'businessRegistrationNumber': lender.business_registration_number,
+        'verified': lender.verified,
+        'logoUrl': lender.logo_url,
+        'companyType': lender.company_type,
+        'website': lender.website,
+        'establishedYear': lender.established_year,
+        'licenseNumber': lender.license_number,
+        'address': {
+            'street': lender.street_address,
+            'city': lender.city,
+            'county': lender.county.value if lender.county else None,
+            'postalCode': lender.postal_code
+        },
+        'contacts': {
+            'primaryPhone': lender.phone_number,
+            'secondaryPhone': lender.secondary_phone,
+            'fax': lender.fax_number,
+            'customerServiceEmail': lender.customer_service_email
+        },
+        'businessInfo': {
+            'description': lender.description,
+            'servicesOffered': lender.services_offered,
+            'operatingHours': lender.operating_hours
+        },
+        'createdAt': lender.created_at.strftime('%Y-%m-%d')
+    } for lender in lenders])
+
 @admin_bp.route('/users-bypass', methods=['GET'])
 def get_users_bypass():
     """Bypass authentication for testing"""
@@ -591,13 +628,147 @@ def moderate_feedback(feedback_id):
 @admin_bp.route('/lenders', methods=['GET'])
 @admin_required
 def get_lenders():
-    """Get all lenders"""
-    from models import UserRole
-    lenders = User.query.filter_by(role=UserRole.LENDER).all()
+    """Get all lenders with detailed information"""
+    lenders = Lender.query.all()
     return jsonify([{
         'id': lender.id,
-        'name': lender.name,
+        'institutionName': lender.institution_name,
+        'contactPerson': lender.contact_person,
         'email': lender.email,
+        'phoneNumber': lender.phone_number,
+        'businessRegistrationNumber': lender.business_registration_number,
         'verified': lender.verified,
+        'logoUrl': lender.logo_url,
+        'companyType': lender.company_type,
+        'website': lender.website,
+        'establishedYear': lender.established_year,
+        'licenseNumber': lender.license_number,
+        'address': {
+            'street': lender.street_address,
+            'city': lender.city,
+            'county': lender.county.value if lender.county else None,
+            'postalCode': lender.postal_code
+        },
+        'contacts': {
+            'primaryPhone': lender.phone_number,
+            'secondaryPhone': lender.secondary_phone,
+            'fax': lender.fax_number,
+            'customerServiceEmail': lender.customer_service_email
+        },
+        'businessInfo': {
+            'description': lender.description,
+            'servicesOffered': lender.services_offered,
+            'operatingHours': lender.operating_hours
+        },
         'createdAt': lender.created_at.strftime('%Y-%m-%d')
     } for lender in lenders])
+
+@admin_bp.route('/lenders/<int:lender_id>', methods=['GET'])
+@admin_required
+def get_lender_details(lender_id):
+    """Get detailed information for a specific lender"""
+    lender = Lender.query.get_or_404(lender_id)
+    return jsonify({
+        'id': lender.id,
+        'institutionName': lender.institution_name,
+        'contactPerson': lender.contact_person,
+        'email': lender.email,
+        'phoneNumber': lender.phone_number,
+        'businessRegistrationNumber': lender.business_registration_number,
+        'verified': lender.verified,
+        'logoUrl': lender.logo_url,
+        'companyType': lender.company_type,
+        'website': lender.website,
+        'establishedYear': lender.established_year,
+        'licenseNumber': lender.license_number,
+        'address': {
+            'street': lender.street_address,
+            'city': lender.city,
+            'county': lender.county.value if lender.county else None,
+            'postalCode': lender.postal_code
+        },
+        'contacts': {
+            'primaryPhone': lender.phone_number,
+            'secondaryPhone': lender.secondary_phone,
+            'fax': lender.fax_number,
+            'customerServiceEmail': lender.customer_service_email
+        },
+        'businessInfo': {
+            'description': lender.description,
+            'servicesOffered': lender.services_offered,
+            'operatingHours': lender.operating_hours
+        },
+        'statistics': {
+            'totalListings': len(lender.mortgage_listings),
+            'totalApplications': len(lender.applications),
+            'activeLoans': len(lender.active_mortgages)
+        },
+        'createdAt': lender.created_at.strftime('%Y-%m-%d')
+    })
+
+@admin_bp.route('/lenders/<int:lender_id>', methods=['PUT'])
+@admin_required
+def update_lender(lender_id):
+    """Update lender information"""
+    lender = Lender.query.get_or_404(lender_id)
+    data = request.json
+    
+    # Update basic information
+    if 'institutionName' in data:
+        lender.institution_name = data['institutionName']
+    if 'contactPerson' in data:
+        lender.contact_person = data['contactPerson']
+    if 'email' in data:
+        lender.email = data['email']
+    if 'phoneNumber' in data:
+        lender.phone_number = data['phoneNumber']
+    if 'businessRegistrationNumber' in data:
+        lender.business_registration_number = data['businessRegistrationNumber']
+    if 'verified' in data:
+        lender.verified = data['verified']
+    if 'logoUrl' in data:
+        lender.logo_url = data['logoUrl']
+    if 'companyType' in data:
+        lender.company_type = data['companyType']
+    if 'website' in data:
+        lender.website = data['website']
+    if 'establishedYear' in data:
+        lender.established_year = data['establishedYear']
+    if 'licenseNumber' in data:
+        lender.license_number = data['licenseNumber']
+    
+    # Update address
+    if 'address' in data:
+        addr = data['address']
+        if 'street' in addr:
+            lender.street_address = addr['street']
+        if 'city' in addr:
+            lender.city = addr['city']
+        if 'county' in addr:
+            from models import KenyanCounty
+            lender.county = KenyanCounty(addr['county'])
+        if 'postalCode' in addr:
+            lender.postal_code = addr['postalCode']
+    
+    # Update contacts
+    if 'contacts' in data:
+        contacts = data['contacts']
+        if 'secondaryPhone' in contacts:
+            lender.secondary_phone = contacts['secondaryPhone']
+        if 'fax' in contacts:
+            lender.fax_number = contacts['fax']
+        if 'customerServiceEmail' in contacts:
+            lender.customer_service_email = contacts['customerServiceEmail']
+    
+    # Update business info
+    if 'businessInfo' in data:
+        biz = data['businessInfo']
+        if 'description' in biz:
+            lender.description = biz['description']
+        if 'servicesOffered' in biz:
+            lender.services_offered = biz['servicesOffered']
+        if 'operatingHours' in biz:
+            lender.operating_hours = biz['operatingHours']
+    
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Lender updated successfully'})
