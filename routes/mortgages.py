@@ -91,7 +91,8 @@ def get_lender_mortgages(lender_id):
                     'repayment_period': m.repayment_period,
                     'down_payment': f"KSH {m.down_payment:,.2f}",
                     'images': m.images if m.images else [],
-                    'status': str(m.status.value) if hasattr(m.status, 'value') else str(m.status)
+                    'status': m.status.value,
+                    'editable': m.status == ListingStatus.ACTIVE
                 })
             except Exception as enum_error:
                 print(f"Enum error for mortgage {m.id}: {enum_error}")
@@ -143,7 +144,8 @@ def get_my_listings():
         'price_range': f"KSH {float(m.price_range):,.2f}",
         'interest_rate': m.interest_rate,
         'images': m.images if m.images else [],
-        'status': m.status.value
+        'status': m.status.value,
+        'editable': m.status == ListingStatus.ACTIVE
     } for m in mortgages]), 200
 
 @mortgages_bp.route('/<int:listing_id>', methods=['PATCH'])
