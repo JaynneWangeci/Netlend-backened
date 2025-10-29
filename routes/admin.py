@@ -323,7 +323,7 @@ def create_user():
         'createdAt': new_user.created_at.strftime('%Y-%m-%d')
     }), 201
 
-@admin_bp.route('/users/<int:user_id>', methods=['PUT'])
+@admin_bp.route('/users/<int:user_id>', methods=['PATCH'])
 @admin_required
 def update_user(user_id):
     """Update user"""
@@ -619,7 +619,7 @@ def get_feedback():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@admin_bp.route('/feedback/<int:feedback_id>', methods=['PUT'])
+@admin_bp.route('/feedback/<int:feedback_id>', methods=['PATCH'])
 @admin_required
 def moderate_feedback(feedback_id):
     """Moderate feedback - placeholder for now"""

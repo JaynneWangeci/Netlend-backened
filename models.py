@@ -120,11 +120,115 @@ class Buyer(db.Model):
     verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Personal Information
+    national_id = db.Column(db.String(20))
+    date_of_birth = db.Column(db.Date)
+    gender = db.Column(db.String(10))
+    county_of_residence = db.Column(db.Enum(KenyanCounty))
+    marital_status = db.Column(db.String(20))
+    dependents = db.Column(db.Integer, default=0)
+    
+    # Employment & Income
+    employment_status = db.Column(db.String(20))
+    employer_name = db.Column(db.String(200))
+    occupation = db.Column(db.String(100))
+    employment_duration = db.Column(db.Integer)  # months
+    monthly_gross_income = db.Column(db.Float)
+    monthly_net_income = db.Column(db.Float)
+    other_income = db.Column(db.Float, default=0)
+    
+    # Financial Obligations
+    has_existing_loans = db.Column(db.Boolean, default=False)
+    loan_types = db.Column(db.String(500))
+    monthly_loan_repayments = db.Column(db.Float, default=0)
+    monthly_expenses = db.Column(db.Float)
+    credit_score = db.Column(db.Integer)
+    
+    # Property Preferences
+    preferred_property_type = db.Column(db.Enum(PropertyType))
+    target_county = db.Column(db.Enum(KenyanCounty))
+    estimated_property_value = db.Column(db.Float)
+    desired_loan_amount = db.Column(db.Float)
+    desired_repayment_period = db.Column(db.Integer)  # years
+    down_payment_amount = db.Column(db.Float)
+    
+    # Banking Information
+    bank_name = db.Column(db.String(100))
+    account_number = db.Column(db.String(50))
+    mpesa_number = db.Column(db.String(20))
+    
+    # Document Verification
+    national_id_uploaded = db.Column(db.Boolean, default=False)
+    kra_pin_uploaded = db.Column(db.Boolean, default=False)
+    bank_statement_uploaded = db.Column(db.Boolean, default=False)
+    credit_report_uploaded = db.Column(db.Boolean, default=False)
+    proof_of_residence_uploaded = db.Column(db.Boolean, default=False)
+    
+    # Profile Completion
+    profile_complete = db.Column(db.Boolean, default=False)
+    creditworthiness_score = db.Column(db.Float)
+    
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    def calculate_creditworthiness_score(self):
+        """Calculate creditworthiness score based on profile data"""
+        score = 0
+        
+        # Income to loan ratio (40% weight)
+        if self.monthly_net_income and self.desired_loan_amount:
+            monthly_payment = (self.desired_loan_amount * 0.12) / 12  # Rough estimate
+            income_ratio = monthly_payment / self.monthly_net_income
+            if income_ratio < 0.3:
+                score += 40
+            elif income_ratio < 0.4:
+                score += 30
+            elif income_ratio < 0.5:
+                score += 20
+        
+        # Employment stability (20% weight)
+        if self.employment_duration:
+            if self.employment_duration >= 24:
+                score += 20
+            elif self.employment_duration >= 12:
+                score += 15
+            elif self.employment_duration >= 6:
+                score += 10
+        
+        # Down payment percentage (20% weight)
+        if self.down_payment_amount and self.estimated_property_value:
+            down_payment_ratio = self.down_payment_amount / self.estimated_property_value
+            if down_payment_ratio >= 0.3:
+                score += 20
+            elif down_payment_ratio >= 0.2:
+                score += 15
+            elif down_payment_ratio >= 0.1:
+                score += 10
+        
+        # Existing loan burden (10% weight)
+        if self.monthly_net_income and self.monthly_loan_repayments:
+            loan_burden = self.monthly_loan_repayments / self.monthly_net_income
+            if loan_burden < 0.2:
+                score += 10
+            elif loan_burden < 0.3:
+                score += 7
+            elif loan_burden < 0.4:
+                score += 5
+        
+        # Document completeness (10% weight)
+        docs_uploaded = sum([
+            self.national_id_uploaded,
+            self.kra_pin_uploaded,
+            self.bank_statement_uploaded,
+            self.proof_of_residence_uploaded
+        ])
+        score += (docs_uploaded / 4) * 10
+        
+        self.creditworthiness_score = min(100, score)
+        return self.creditworthiness_score
 
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -294,6 +398,10 @@ class SavedProperty(db.Model):
     buyer_id = db.Column(db.Integer, db.ForeignKey('buyers.id'), nullable=False)
     listing_id = db.Column(db.Integer, db.ForeignKey('mortgage_listings.id'), nullable=False)
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    buyer = db.relationship('Buyer', backref='saved_properties')
+    listing = db.relationship('MortgageListing', backref='saved_by_buyers')
 
 class PreApproval(db.Model):
     __tablename__ = 'pre_approvals'

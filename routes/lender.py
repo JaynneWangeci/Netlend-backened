@@ -85,3 +85,65 @@ def get_lender_applications(lender_id):
             'notes': app.notes
         })
     return jsonify(result)
+
+@lender_bp.route('/profile', methods=['GET'])
+@jwt_required()
+def get_lender_profile():
+    user_id = get_jwt_identity()
+    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    lender = Lender.query.get(lender_id)
+    
+    return jsonify({
+        'id': lender.id,
+        'institution_name': lender.institution_name,
+        'contact_person': lender.contact_person,
+        'email': lender.email,
+        'phone_number': lender.phone_number,
+        'business_registration_number': lender.business_registration_number,
+        'verified': lender.verified,
+        'logo_url': lender.logo_url
+    })
+
+@lender_bp.route('/profile', methods=['PATCH'])
+@jwt_required()
+def update_lender_profile():
+    user_id = get_jwt_identity()
+    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    lender = Lender.query.get(lender_id)
+    data = request.json
+    
+    print(f"Debug: Received data: {data}")  # Debug log
+    
+    if 'company_name' in data:
+        lender.institution_name = data['company_name']
+    if 'institution_name' in data:
+        lender.institution_name = data['institution_name']
+        print(f"Updated institution_name to: {data['institution_name']}")
+    if 'contact_person' in data:
+        lender.contact_person = data['contact_person']
+    if 'contact_email' in data:
+        lender.email = data['contact_email']
+    if 'email' in data:
+        lender.email = data['email']
+    if 'phone' in data:
+        lender.phone_number = data['phone']
+    if 'phone_number' in data:
+        lender.phone_number = data['phone_number']
+    if 'license_number' in data:
+        lender.business_registration_number = data['license_number']
+    if 'business_registration_number' in data:
+        lender.business_registration_number = data['business_registration_number']
+    if 'address' in data:
+        # Note: address field doesn't exist in Lender model, ignoring for now
+        print(f"Address field received but not saved: {data['address']}")
+    if 'logo_url' in data:
+        lender.logo_url = data['logo_url']
+    
+    try:
+        db.session.commit()
+        print("Database commit successful")
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Database commit failed: {e}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

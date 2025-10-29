@@ -34,7 +34,8 @@ def create_app():
             'http://localhost:3001'
         ],
         supports_credentials=True,
-        allow_headers=['Content-Type', 'Authorization']
+        allow_headers=['Content-Type', 'Authorization'],
+        methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
     )
 
     # Import and register blueprints
