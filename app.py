@@ -34,8 +34,9 @@ def create_app():
             'http://localhost:3001'
         ],
         supports_credentials=True,
-        allow_headers=['Content-Type', 'Authorization'],
-        methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
+        allow_headers=['Content-Type', 'Authorization', 'Accept'],
+        methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+        expose_headers=['Content-Type', 'Authorization']
     )
 
     # Import and register blueprints
@@ -298,6 +299,15 @@ def create_app():
     @app.route('/health')
     def health_check():
         return jsonify({"status": "healthy", "message": "NetLend API is running"})
+    
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = jsonify()
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            response.headers.add('Access-Control-Allow-Headers', "*")
+            response.headers.add('Access-Control-Allow-Methods', "*")
+            return response
     
     @app.route('/api/debug/admin', methods=['GET'])
     def debug_admin():
