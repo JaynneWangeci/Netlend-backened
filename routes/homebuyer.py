@@ -75,6 +75,7 @@ def get_properties():
         'rate': listing.interest_rate,
         'term': listing.repayment_period,
         'lender': listing.lender.institution_name,
+        'status': listing.status.value,
         'images': listing.images or []
     } for listing in listings])
 
