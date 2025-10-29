@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from models import Lender, MortgageListing
+from models import Lender, MortgageListing, ListingStatus
 # from utils.cloudinary import upload_images
 
 mortgages_bp = Blueprint('mortgages', __name__)
@@ -17,7 +17,7 @@ def get_mortgages():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     
-    mortgages = MortgageListing.query.filter_by(status='active').paginate(
+    mortgages = MortgageListing.query.filter_by(status=ListingStatus.ACTIVE).paginate(
         page=page, per_page=per_page, error_out=False
     )
     
@@ -152,6 +152,12 @@ def update_mortgage(listing_id):
         data = request.get_json()
         listing = MortgageListing.query.get_or_404(listing_id)
         
+        # Prevent editing of acquired or sold houses
+        if listing.status in [ListingStatus.ACQUIRED, ListingStatus.SOLD]:
+            return jsonify({
+                'error': 'Cannot edit house that has been acquired or sold'
+            }), 403
+        
         if 'subject' in data:
             listing.property_title = data['subject']
         if 'property_type' in data:
@@ -188,6 +194,14 @@ def update_mortgage(listing_id):
 def delete_mortgage(listing_id):
     try:
         listing = MortgageListing.query.get_or_404(listing_id)
+        
+        # Prevent deletion of acquired or sold houses
+        if listing.status in [ListingStatus.ACQUIRED, ListingStatus.SOLD]:
+            return jsonify({
+                'success': False,
+                'error': 'Cannot delete house that has been acquired or sold'
+            }), 403
+        
         db.session.delete(listing)
         db.session.commit()
         

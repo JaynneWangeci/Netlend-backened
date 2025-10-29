@@ -74,6 +74,13 @@ def create_app():
     except Exception as e:
         print(f"❌ Failed to register lender routes: {e}")
     
+    try:
+        from routes.payments import payments_bp
+        app.register_blueprint(payments_bp, url_prefix='/api/payments')
+        print("✅ Payment routes registered")
+    except Exception as e:
+        print(f"❌ Failed to register payment routes: {e}")
+    
     # Role-based middleware
     def token_required(allowed_roles=None):
         def decorator(f):

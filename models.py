@@ -16,8 +16,8 @@ class PropertyType(Enum):
 
 class ListingStatus(Enum):
     ACTIVE = "active"
-    PENDING = "pending"
-    REMOVED = "removed"
+    ACQUIRED = "acquired"
+    SOLD = "sold"
 
 class ApplicationStatus(Enum):
     PENDING = "pending"
@@ -316,6 +316,26 @@ class MortgageListing(db.Model):
     
     # Relationships
     applications = db.relationship('MortgageApplication', backref='listing', lazy=True)
+    
+    def update_status_from_payments(self):
+        """Update house status based on mortgage payments"""
+        active_mortgage = ActiveMortgage.query.join(MortgageApplication).filter(
+            MortgageApplication.listing_id == self.id,
+            ActiveMortgage.status == MortgageStatus.ACTIVE
+        ).first()
+        
+        if not active_mortgage:
+            return
+        
+        total_paid = active_mortgage.principal_amount - active_mortgage.remaining_balance
+        payment_percentage = total_paid / active_mortgage.principal_amount
+        
+        if payment_percentage >= 1.0:
+            self.status = ListingStatus.SOLD
+        elif payment_percentage > 0:
+            self.status = ListingStatus.ACQUIRED
+        
+        db.session.commit()
 
 class MortgageApplication(db.Model):
     __tablename__ = 'mortgage_applications'
@@ -364,6 +384,20 @@ class PaymentSchedule(db.Model):
     status = db.Column(db.Enum(PaymentStatus), default=PaymentStatus.PENDING)
     receipt_url = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def process_payment(self, amount):
+        """Process payment and update house status"""
+        self.amount_paid = amount
+        self.status = PaymentStatus.PAID if amount >= self.amount_due else PaymentStatus.PENDING
+        
+        # Update remaining balance
+        self.mortgage.remaining_balance -= amount
+        
+        # Update house status
+        if self.mortgage.application and self.mortgage.application.listing:
+            self.mortgage.application.listing.update_status_from_payments()
+        
+        db.session.commit()
 
 class RefinancingOffer(db.Model):
     __tablename__ = 'refinancing_offers'
