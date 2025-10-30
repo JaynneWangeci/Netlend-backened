@@ -156,3 +156,35 @@ def get_creditworthiness():
         'recommendation': recommendation,
         'profileComplete': buyer.profile_complete
     })
+
+@homebuyer_bp.route('/my-mortgages', methods=['GET'])
+@jwt_required()
+def get_my_mortgages():
+    user_id = get_jwt_identity()
+    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    
+    from models import ActiveMortgage
+    mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+    
+    result = []
+    for mortgage in mortgages:
+        monthly_payment = (mortgage.principal_amount * (mortgage.interest_rate/100/12)) / (1 - (1 + mortgage.interest_rate/100/12)**(-mortgage.repayment_term))
+        payments_made = mortgage.repayment_term - int((mortgage.remaining_balance / mortgage.principal_amount) * mortgage.repayment_term)
+        
+        result.append({
+            'id': mortgage.id,
+            'lender': mortgage.lender.institution_name,
+            'property': mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Property',
+            'principalAmount': mortgage.principal_amount,
+            'remainingBalance': mortgage.remaining_balance,
+            'interestRate': mortgage.interest_rate,
+            'monthlyPayment': round(monthly_payment, 2),
+            'totalTerm': mortgage.repayment_term,
+            'paymentsMade': payments_made,
+            'remainingPayments': mortgage.repayment_term - payments_made,
+            'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
+            'status': mortgage.status.value,
+            'startDate': mortgage.created_at.strftime('%Y-%m-%d')
+        })
+    
+    return jsonify(result)
