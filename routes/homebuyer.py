@@ -14,7 +14,10 @@ def test_applications():
 @jwt_required()
 def get_profile():
     user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        buyer_id = int(user_id[1:])
+    else:
+        buyer_id = int(user_id)
     buyer = Buyer.query.get(buyer_id)
     
     if not buyer:
@@ -52,7 +55,10 @@ def get_profile():
 def update_profile():
     try:
         user_id = get_jwt_identity()
-        buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+            buyer_id = int(user_id[1:])
+        else:
+            buyer_id = int(user_id)
         buyer = Buyer.query.get(buyer_id)
         
         if not buyer:
@@ -150,7 +156,10 @@ def get_properties():
 @jwt_required()
 def get_creditworthiness():
     user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        buyer_id = int(user_id[1:])
+    else:
+        buyer_id = int(user_id)
     buyer = Buyer.query.get(buyer_id)
     
     if not buyer:
@@ -286,6 +295,16 @@ def handle_applications():
         print(f'Loan amount: {loan_amount}, Repayment years: {repayment_years}')
         
         borrower_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        
+        # Check if buyer already applied for this property
+        existing_app = MortgageApplication.query.filter_by(
+            borrower_id=borrower_id,
+            listing_id=listing_id
+        ).first()
+        
+        if existing_app:
+            return jsonify({'error': 'You have already applied for this property'}), 409
+        
         print(f'Creating application: borrower_id={borrower_id}, lender_id={listing.lender_id}, listing_id={listing_id}')
         
         application = MortgageApplication(

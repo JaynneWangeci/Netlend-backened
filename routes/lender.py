@@ -44,7 +44,10 @@ def get_dashboard():
 @jwt_required()
 def get_applications():
     user_id = get_jwt_identity()
-    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        lender_id = int(user_id[1:])
+    else:
+        lender_id = int(user_id)
     print(f"Debug: user_id={user_id}, lender_id={lender_id}")
     
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).all()
