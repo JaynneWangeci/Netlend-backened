@@ -18,6 +18,9 @@ def get_profile():
     
     return jsonify({
         'name': buyer.name or '',
+        'fullName': buyer.name or '',
+        'buyerName': buyer.name or '',
+        'email': buyer.email or '',
         'phoneNumber': buyer.phone_number or '',
         'nationalId': buyer.national_id or '',
         'gender': buyer.gender or '',
@@ -35,6 +38,7 @@ def get_profile():
         'downPaymentAmount': buyer.down_payment_amount or '',
         'bankName': buyer.bank_name or '',
         'accountNumber': buyer.account_number or '',
+        'mpesaNumber': buyer.mpesa_number or '',
         'profileComplete': buyer.profile_complete or False,
         'creditworthinessScore': buyer.creditworthiness_score or 0
     })
@@ -53,6 +57,8 @@ def update_profile():
         data = request.json
         if not data:
             return jsonify({'error': 'No data provided'}), 400
+        
+        print(f'Profile update data received: {data}')  # Debug log
         
         # Personal Information
         if 'name' in data:
@@ -83,6 +89,12 @@ def update_profile():
             buyer.bank_name = data['bankName']
         if 'accountNumber' in data:
             buyer.account_number = data['accountNumber']
+        if 'mpesaNumber' in data:
+            buyer.mpesa_number = data['mpesaNumber']
+        if 'mpesa_number' in data:
+            buyer.mpesa_number = data['mpesa_number']
+        if 'mpesa' in data:
+            buyer.mpesa_number = data['mpesa']
         
         # Calculate creditworthiness score
         if buyer.calculate_creditworthiness_score:
