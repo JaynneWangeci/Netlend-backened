@@ -110,7 +110,14 @@ def create_app():
         password = data.get('password')
         
         if not email:
-            return jsonify({"success": False, "error": "Email required"}), 400
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "error",
+                    "title": "Login Failed",
+                    "message": "Email is required to login."
+                }
+            }), 400
         
         from models import User, Lender, Buyer, Admin
         
@@ -178,7 +185,14 @@ def create_app():
                 "token": token
             })
         
-        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+        return jsonify({
+            "success": False,
+            "modal": {
+                "type": "error",
+                "title": "Login Failed",
+                "message": "Invalid email or password. Please try again."
+            }
+        }), 401
 
     @app.route('/api/register', methods=['POST'])
     def register():
@@ -189,7 +203,14 @@ def create_app():
         user_type = data.get('userType', 'lender')
         
         if not name or not email:
-            return jsonify({"success": False, "error": "Name and email are required"}), 400
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "error",
+                    "title": "Registration Failed",
+                    "message": "Name and email are required for registration."
+                }
+            }), 400
         
         from models import User, UserRole, Lender, Buyer, Admin
         
@@ -198,7 +219,14 @@ def create_app():
             Lender.query.filter_by(email=email).first() or
             Buyer.query.filter_by(email=email).first() or
             Admin.query.filter_by(email=email).first()):
-            return jsonify({"success": False, "error": "User already exists"}), 409
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "warning",
+                    "title": "Registration Failed",
+                    "message": "An account with this email already exists. Please login instead."
+                }
+            }), 409
         
         if user_type in ['homebuyer', 'buyer']:
             # Create in Buyer table

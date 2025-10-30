@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
+from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus, PaymentSchedule
 from datetime import datetime, timedelta
 
 lender_bp = Blueprint('lender', __name__)
@@ -33,12 +33,24 @@ def get_dashboard():
     
     listings = MortgageListing.query.filter_by(lender_id=lender_id).count()
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).count()
+    active_loans = ActiveMortgage.query.filter_by(lender_id=lender_id).count()
+    
+    # Calculate revenue from payments
+    revenue = 0
+    mortgages = ActiveMortgage.query.filter_by(lender_id=lender_id).all()
+    for mortgage in mortgages:
+        payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).all()
+        for payment in payments:
+            if payment.status.value == 'paid':
+                # Calculate interest portion (simplified)
+                interest_portion = payment.amount_paid * (mortgage.interest_rate / 100 / 12)
+                revenue += interest_portion
     
     return jsonify({
         'totalListings': listings,
         'totalApplications': applications,
-        'activeLoans': 0,
-        'revenue': 0
+        'activeLoans': active_loans,
+        'revenue': round(revenue, 2)
     })
 
 @lender_bp.route('/applications', methods=['GET'])
@@ -185,11 +197,26 @@ def update_lender_profile():
     try:
         db.session.commit()
         print("Database commit successful")
-        return jsonify({'success': True})
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Profile Updated',
+                'message': 'Your profile has been updated successfully.'
+            }
+        })
     except Exception as e:
         print(f"Database commit failed: {e}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Update Failed',
+                'message': 'Failed to update profile. Please try again.',
+                'error': str(e)
+            }
+        }), 500
 
 @lender_bp.route('/applications/<int:app_id>/approve', methods=['POST'])
 @jwt_required()
@@ -239,15 +266,56 @@ def approve_application(app_id):
         
         return jsonify({
             'success': True,
-            'message': f'Application approved. {len(other_apps)} other applications rejected.',
-            'activemortgage': {
-                'id': active_mortgage.id,
-                'principalAmount': active_mortgage.principal_amount,
-                'remainingBalance': active_mortgage.remaining_balance
+            'modal': {
+                'type': 'success',
+                'title': 'Application Approved',
+                'message': f'Application has been approved successfully. {len(other_apps)} other applications were automatically rejected.',
+                'details': {
+                    'mortgage_id': active_mortgage.id,
+                    'principal_amount': active_mortgage.principal_amount,
+                    'remaining_balance': active_mortgage.remaining_balance
+                }
             }
         })
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@lender_bp.route('/my-listings', methods=['GET'])
+@jwt_required()
+def get_my_listings():
+    """Get all property listings for the current lender"""
+    try:
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        listings = MortgageListing.query.filter_by(lender_id=lender_id).all()
+        
+        result = []
+        for listing in listings:
+            # Count applications for this listing
+            applications_count = MortgageApplication.query.filter_by(listing_id=listing.id).count()
+            
+            result.append({
+                'id': listing.id,
+                'title': listing.property_title,
+                'type': listing.property_type.value,
+                'bedrooms': listing.bedrooms,
+                'location': f"{listing.address}, {listing.county.value}",
+                'price': float(listing.price_range),
+                'interestRate': listing.interest_rate,
+                'repaymentPeriod': listing.repayment_period,
+                'downPayment': listing.down_payment,
+                'monthlyPayment': listing.monthly_payment,
+                'status': listing.status.value,
+                'applicationsCount': applications_count,
+                'images': listing.images or [],
+                'createdAt': listing.created_at.strftime('%Y-%m-%d'),
+                'eligibilityCriteria': listing.eligibility_criteria
+            })
+        
+        return jsonify(result)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @lender_bp.route('/sold-mortgages', methods=['GET'])

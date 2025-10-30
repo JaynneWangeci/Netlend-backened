@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType
+from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType, PaymentSchedule
 from datetime import datetime
 
 homebuyer_bp = Blueprint('homebuyer', __name__)
@@ -114,13 +114,26 @@ def update_profile():
         db.session.commit()
         return jsonify({
             'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Profile Updated',
+                'message': 'Your profile has been updated successfully.'
+            },
             'profileComplete': buyer.profile_complete,
             'creditworthinessScore': buyer.creditworthiness_score
         })
     except Exception as e:
         print(f'Profile update error: {e}')
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Update Failed',
+                'message': 'Failed to update profile. Please try again.',
+                'error': str(e)
+            }
+        }), 500
 
 @homebuyer_bp.route('/properties', methods=['GET'])
 def get_properties():
@@ -151,6 +164,42 @@ def get_properties():
         'monthlyPayment': listing.monthly_payment,
         'images': listing.images or []
     } for listing in listings])
+
+@homebuyer_bp.route('/dashboard', methods=['GET'])
+@jwt_required()
+def get_dashboard():
+    """Get dashboard data for homebuyer"""
+    try:
+        user_id = get_jwt_identity()
+        buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        
+        from models import ActiveMortgage, PaymentSchedule
+        
+        # Count applications
+        applications_count = MortgageApplication.query.filter_by(borrower_id=buyer_id).count()
+        
+        # Count active mortgages
+        active_mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).count()
+        
+        # Calculate total payments made
+        mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+        total_payments = 0
+        for mortgage in mortgages:
+            payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).all()
+            total_payments += sum([p.amount_paid for p in payments])
+        
+        # Get saved properties count
+        from models import SavedProperty
+        saved_properties = SavedProperty.query.filter_by(buyer_id=buyer_id).count()
+        
+        return jsonify({
+            'totalApplications': applications_count,
+            'activeMortgages': active_mortgages,
+            'totalPayments': total_payments,
+            'savedProperties': saved_properties
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @homebuyer_bp.route('/creditworthiness', methods=['GET'])
 @jwt_required()
@@ -202,7 +251,7 @@ def get_my_mortgages():
         user_id = get_jwt_identity()
         buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
         
-        from models import ActiveMortgage
+        from models import ActiveMortgage, PaymentSchedule
         mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
         
         result = []
@@ -214,7 +263,8 @@ def get_my_mortgages():
                 else:
                     monthly_payment = mortgage.principal_amount / mortgage.repayment_term
                 
-                payments_made = mortgage.repayment_term - int((mortgage.remaining_balance / mortgage.principal_amount) * mortgage.repayment_term)
+                # Count actual payments made
+                payments_made = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).count()
                 
                 result.append({
                     'id': mortgage.id,
@@ -308,7 +358,14 @@ def handle_applications():
         ).first()
         
         if existing_app:
-            return jsonify({'error': 'You have already applied for this property'}), 409
+            return jsonify({
+                'success': False,
+                'modal': {
+                    'type': 'warning',
+                    'title': 'Duplicate Application',
+                    'message': 'You have already applied for this property. Please check your applications.'
+                }
+            }), 409
         
         print(f'Creating application: borrower_id={borrower_id}, lender_id={listing.lender_id}, listing_id={listing_id}')
         
@@ -323,8 +380,27 @@ def handle_applications():
         db.session.add(application)
         db.session.commit()
         
-        return jsonify({'id': application.id, 'status': 'submitted'}), 201
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Application Submitted',
+                'message': 'Your mortgage application has been submitted successfully. You will be notified once it is reviewed.'
+            },
+            'application': {
+                'id': application.id,
+                'status': 'submitted'
+            }
+        }), 201
     except Exception as e:
         print(f'Application error: {e}')
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Application Failed',
+                'message': 'Failed to submit application. Please try again.',
+                'error': str(e)
+            }
+        }), 500
