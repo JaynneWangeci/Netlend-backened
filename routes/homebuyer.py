@@ -189,38 +189,78 @@ def get_creditworthiness():
 @homebuyer_bp.route('/my-mortgages', methods=['GET'])
 @jwt_required()
 def get_my_mortgages():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    
-    from models import ActiveMortgage
-    mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
-    
-    result = []
-    for mortgage in mortgages:
-        monthly_payment = (mortgage.principal_amount * (mortgage.interest_rate/100/12)) / (1 - (1 + mortgage.interest_rate/100/12)**(-mortgage.repayment_term))
-        payments_made = mortgage.repayment_term - int((mortgage.remaining_balance / mortgage.principal_amount) * mortgage.repayment_term)
+    try:
+        user_id = get_jwt_identity()
+        buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
         
-        result.append({
-            'id': mortgage.id,
-            'lender': mortgage.lender.institution_name,
-            'property': mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Property',
-            'principalAmount': mortgage.principal_amount,
-            'remainingBalance': mortgage.remaining_balance,
-            'interestRate': mortgage.interest_rate,
-            'monthlyPayment': round(monthly_payment, 2),
-            'totalTerm': mortgage.repayment_term,
-            'paymentsMade': payments_made,
-            'remainingPayments': mortgage.repayment_term - payments_made,
-            'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
-            'status': mortgage.status.value,
-            'startDate': mortgage.created_at.strftime('%Y-%m-%d')
-        })
-    
-    return jsonify(result)
+        from models import ActiveMortgage
+        mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+        
+        result = []
+        for mortgage in mortgages:
+            try:
+                if mortgage.interest_rate > 0:
+                    monthly_rate = mortgage.interest_rate / 100 / 12
+                    monthly_payment = (mortgage.principal_amount * monthly_rate) / (1 - (1 + monthly_rate)**(-mortgage.repayment_term))
+                else:
+                    monthly_payment = mortgage.principal_amount / mortgage.repayment_term
+                
+                payments_made = mortgage.repayment_term - int((mortgage.remaining_balance / mortgage.principal_amount) * mortgage.repayment_term)
+                
+                result.append({
+                    'id': mortgage.id,
+                    'lender': mortgage.lender.institution_name if mortgage.lender else 'Unknown Lender',
+                    'property': mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Property',
+                    'principalAmount': mortgage.principal_amount,
+                    'remainingBalance': mortgage.remaining_balance,
+                    'interestRate': mortgage.interest_rate,
+                    'monthlyPayment': round(monthly_payment, 2),
+                    'totalTerm': mortgage.repayment_term,
+                    'paymentsMade': payments_made,
+                    'remainingPayments': mortgage.repayment_term - payments_made,
+                    'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
+                    'status': mortgage.status.value,
+                    'startDate': mortgage.created_at.strftime('%Y-%m-%d')
+                })
+            except Exception as e:
+                print(f'Error processing mortgage {mortgage.id}: {e}')
+                continue
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f'My mortgages error: {e}')
+        return jsonify({'error': str(e)}), 500
 
-@homebuyer_bp.route('/applications', methods=['POST'])
+@homebuyer_bp.route('/applications', methods=['GET', 'POST'])
 @jwt_required()
-def create_application():
+def handle_applications():
+    if request.method == 'GET':
+        try:
+            user_id = get_jwt_identity()
+            print(f'User trying to access applications: {user_id}')
+            if user_id.startswith('B'):
+                buyer_id = int(user_id[1:])
+            elif user_id.startswith('L'):
+                buyer_id = int(user_id[1:])  # Use lender ID as buyer ID for testing
+            else:
+                buyer_id = int(user_id)
+            print(f'Getting applications for buyer ID: {buyer_id}')
+            applications = MortgageApplication.query.filter_by(borrower_id=buyer_id).all()
+            print(f'Found {len(applications)} applications for buyer {buyer_id}')
+            
+            return jsonify([{
+                'id': app.id,
+                'lender': app.lender.institution_name if app.lender else 'Unknown Lender',
+                'amount': app.requested_amount,
+                'status': app.status.value,
+                'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+                'property': app.listing.property_title if app.listing else 'Unknown Property'
+            } for app in applications])
+        except Exception as e:
+            print(f'Applications GET error: {e}')
+            return jsonify({'error': str(e)}), 500
+    
+    # POST method (existing create application logic)
     try:
         user_id = get_jwt_identity()
         data = request.json
