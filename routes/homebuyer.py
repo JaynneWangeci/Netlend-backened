@@ -102,7 +102,19 @@ def update_profile():
 
 @homebuyer_bp.route('/properties', methods=['GET'])
 def get_properties():
-    listings = MortgageListing.query.all()
+    # Get filter parameters
+    min_payment = request.args.get('minPayment', type=float)
+    max_payment = request.args.get('maxPayment', type=float)
+    
+    # Build query with filters
+    query = MortgageListing.query
+    
+    if min_payment:
+        query = query.filter(MortgageListing.monthly_payment >= min_payment)
+    if max_payment:
+        query = query.filter(MortgageListing.monthly_payment <= max_payment)
+    
+    listings = query.all()
     
     return jsonify([{
         'id': listing.id,
@@ -114,6 +126,7 @@ def get_properties():
         'term': listing.repayment_period,
         'lender': listing.lender.institution_name,
         'status': listing.status.value,
+        'monthlyPayment': listing.monthly_payment,
         'images': listing.images or []
     } for listing in listings])
 

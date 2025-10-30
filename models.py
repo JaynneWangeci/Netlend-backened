@@ -309,6 +309,7 @@ class MortgageListing(db.Model):
     interest_rate = db.Column(db.Float, nullable=False)
     repayment_period = db.Column(db.Integer, nullable=False)  # years
     down_payment = db.Column(db.Float, nullable=False)
+    monthly_payment = db.Column(db.Float)
     eligibility_criteria = db.Column(db.Text)
     images = db.Column(db.JSON)
     status = db.Column(db.Enum(ListingStatus), default=ListingStatus.ACTIVE)
@@ -398,6 +399,20 @@ class PaymentSchedule(db.Model):
             self.mortgage.application.listing.update_status_from_payments()
         
         db.session.commit()
+    
+    def calculate_monthly_payment(listing):
+        """Calculate monthly payment using standard mortgage formula"""
+        loan_amount = float(listing.price_range) - listing.down_payment
+        monthly_rate = listing.interest_rate / 100 / 12
+        num_payments = listing.repayment_period * 12
+        
+        if monthly_rate == 0:
+            monthly_payment = loan_amount / num_payments
+        else:
+            monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate)**num_payments) / ((1 + monthly_rate)**num_payments - 1)
+        
+        listing.monthly_payment = round(monthly_payment, 2)
+        return listing.monthly_payment
 
 class RefinancingOffer(db.Model):
     __tablename__ = 'refinancing_offers'
