@@ -335,6 +335,46 @@ def create_app():
             'maxAmount': float(listing.price_range)
         } for listing in listings])
     
+    @app.route('/api/applications', methods=['POST'])
+    @jwt_required()
+    def create_application():
+        try:
+            user_id = get_jwt_identity()
+            data = request.json
+            
+            print(f'Application data: {data}')  # Debug log
+            print(f'User ID: {user_id}')  # Debug log
+            
+            from models import MortgageApplication
+            
+            # Get property details
+            listing_id = data.get('id')
+            loan_amount = data.get('price', 0) * 0.8  # 80% of property price
+            repayment_years = data.get('term', 25)
+            
+            # Get lender_id from the listing
+            from models import MortgageListing
+            listing = MortgageListing.query.get(listing_id)
+            if not listing:
+                return jsonify({'error': 'Property not found'}), 404
+            
+            application = MortgageApplication(
+                borrower_id=int(user_id[1:]) if user_id.startswith('B') else int(user_id),
+                lender_id=listing.lender_id,
+                listing_id=listing_id,
+                requested_amount=loan_amount,
+                repayment_years=repayment_years
+            )
+            
+            db.session.add(application)
+            db.session.commit()
+            
+            return jsonify({'id': application.id, 'status': 'submitted'}), 201
+        except Exception as e:
+            print(f'Application error: {e}')
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+    
     @app.route('/docs')
     def swagger_docs():
         return '''<!DOCTYPE html>

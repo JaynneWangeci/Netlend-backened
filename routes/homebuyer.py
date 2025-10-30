@@ -6,6 +6,10 @@ from datetime import datetime
 
 homebuyer_bp = Blueprint('homebuyer', __name__)
 
+@homebuyer_bp.route('/test-applications', methods=['POST'])
+def test_applications():
+    return jsonify({'message': 'Applications endpoint working', 'data': request.json})
+
 @homebuyer_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
@@ -213,3 +217,50 @@ def get_my_mortgages():
         })
     
     return jsonify(result)
+
+@homebuyer_bp.route('/applications', methods=['POST'])
+@jwt_required()
+def create_application():
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        
+        print(f'Application data: {data}')
+        print(f'User ID: {user_id}')
+        
+        # Get property details
+        listing_id = data.get('property_id') or data.get('id')
+        print(f'Listing ID: {listing_id}')
+        
+        # Get lender_id from the listing
+        listing = MortgageListing.query.get(listing_id)
+        if not listing:
+            print(f'Listing not found for ID: {listing_id}')
+            return jsonify({'error': 'Property not found'}), 404
+        
+        print(f'Found listing: {listing.property_title}, Lender ID: {listing.lender_id}')
+        
+        loan_amount = data.get('loan_amount') or (data.get('property_price', 0) * 0.8)
+        repayment_years = data.get('repayment_period') or data.get('term', 25)
+        
+        print(f'Loan amount: {loan_amount}, Repayment years: {repayment_years}')
+        
+        borrower_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        print(f'Creating application: borrower_id={borrower_id}, lender_id={listing.lender_id}, listing_id={listing_id}')
+        
+        application = MortgageApplication(
+            borrower_id=borrower_id,
+            lender_id=listing.lender_id,
+            listing_id=listing_id,
+            requested_amount=loan_amount,
+            repayment_years=repayment_years
+        )
+        
+        db.session.add(application)
+        db.session.commit()
+        
+        return jsonify({'id': application.id, 'status': 'submitted'}), 201
+    except Exception as e:
+        print(f'Application error: {e}')
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
