@@ -86,3 +86,20 @@ def get_creditworthiness():
         'recommendation': 'Good candidate',
         'profileComplete': buyer.profile_complete
     })
+
+@homebuyer_bp.route('/properties', methods=['GET'])
+def get_properties():
+    listings = MortgageListing.query.all()
+    
+    return jsonify([{
+        'id': listing.id,
+        'title': listing.property_title,
+        'type': listing.property_type.value,
+        'location': f"{listing.address}, {listing.county.value}",
+        'price': float(listing.price_range),
+        'rate': listing.interest_rate,
+        'term': listing.repayment_period,
+        'lender': listing.lender.institution_name,
+        'status': listing.status.value,
+        'images': listing.images or []
+    } for listing in listings])
