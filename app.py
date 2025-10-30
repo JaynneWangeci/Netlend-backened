@@ -1,356 +1,121 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
 from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from flask_mail import Mail
-from functools import wraps
-from datetime import datetime, timedelta
-from config import Config
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
+# Database Configuration (PostgreSQL)
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:1234@localhost:5432/netlend_db"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = 'your_secret_key_here'
 
 # Initialize extensions
-db = SQLAlchemy()
-migrate = Migrate()
-jwt = JWTManager()
-mail = Mail()
+db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+migrate = Migrate(app, db)
 
-def create_app():
-    app = Flask(__name__)
-    app.config.from_object(Config)
-    
-    # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    jwt.init_app(app)
-    mail.init_app(app)
+# ----------------------- MODELS -----------------------
 
-    # Configure CORS
-    CORS(
-        app,
-        origins=[
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-            'http://localhost:3000',
-            'http://localhost:3001'
-        ],
-        supports_credentials=True,
-        allow_headers=['Content-Type', 'Authorization'],
-        methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
-    )
+# Buyer model
+class Buyer(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    mortgage_type = db.Column(db.String(120), nullable=True)
 
-    # Import and register blueprints
-    try:
-        from routes.admin import admin_bp
-        app.register_blueprint(admin_bp, url_prefix='/api/admin')
-        print("✅ Admin routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register admin routes: {e}")
-    
-    try:
-        from routes.mortgages import mortgages_bp
-        app.register_blueprint(mortgages_bp, url_prefix='/api/mortgages')
-        print("✅ Mortgage routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register mortgage routes: {e}")
-    
-    try:
-        from routes.auth import auth_bp
-        app.register_blueprint(auth_bp, url_prefix='/api/auth')
-        print("✅ Auth routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register auth routes: {e}")
-    
-    try:
-        from routes.homebuyer import homebuyer_bp
-        app.register_blueprint(homebuyer_bp, url_prefix='/api/homebuyer')
-        print("✅ Homebuyer routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register homebuyer routes: {e}")
-    
-    try:
-        from routes.lender import lender_bp
-        app.register_blueprint(lender_bp, url_prefix='/api/lender')
-        print("✅ Lender routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register lender routes: {e}")
-    
-    try:
-        from routes.payments import payments_bp
-        app.register_blueprint(payments_bp, url_prefix='/api/payments')
-        print("✅ Payment routes registered")
-    except Exception as e:
-        print(f"❌ Failed to register payment routes: {e}")
-    
-    # Role-based middleware
-    def token_required(allowed_roles=None):
-        def decorator(f):
-            @wraps(f)
-            @jwt_required()
-            def decorated_function(*args, **kwargs):
-                user_id = get_jwt_identity()
-                from models import User
-                user = User.query.get_or_404(user_id)
-                
-                user_role = user.role.value
-                
-                if allowed_roles and user_role not in allowed_roles:
-                    return jsonify({'error': f'Access denied. Required roles: {", ".join(allowed_roles)}'}), 403
-                
-                request.current_user = {'user_id': user.id, 'email': user.email, 'role': user_role}
-                return f(*args, **kwargs)
-            return decorated_function
-        return decorator
+    def set_password(self, password):
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-    # Auth endpoints
-    @app.route('/api/login', methods=['POST'])
-    def login():
-        data = request.json
-        email = data.get('email')
-        password = data.get('password')
-        
-        if not email:
-            return jsonify({"success": False, "error": "Email required"}), 400
-        
-        from models import User, Lender, Buyer, Admin
-        
-        # Check User table (legacy admin)
-        user = User.query.filter_by(email=email).first()
-        if user and password and user.check_password(password):
-            token = create_access_token(identity=f"U{user.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": user.id,
-                    "name": user.name,
-                    "email": user.email,
-                    "userType": user.role.value,
-                    "verified": user.verified
-                },
-                "token": token
-            })
-        
-        # Check Buyer table
-        buyer = Buyer.query.filter_by(email=email).first()
-        if buyer and password and buyer.check_password(password):
-            token = create_access_token(identity=f"B{buyer.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": buyer.id,
-                    "name": buyer.name,
-                    "email": buyer.email,
-                    "userType": "homebuyer",
-                    "verified": buyer.verified
-                },
-                "token": token
-            })
-        
-        # Check Admin table
-        admin = Admin.query.filter_by(email=email).first()
-        if admin and password and admin.check_password(password):
-            token = create_access_token(identity=f"A{admin.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": admin.id,
-                    "name": admin.name,
-                    "email": admin.email,
-                    "userType": "admin",
-                    "verified": admin.verified
-                },
-                "token": token
-            })
-        
-        # Check Lender table
-        lender = Lender.query.filter_by(email=email).first()
-        if lender and password and lender.check_password(password):
-            token = create_access_token(identity=f"L{lender.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": lender.id,
-                    "name": lender.institution_name,
-                    "email": lender.email,
-                    "userType": "lender",
-                    "verified": lender.verified
-                },
-                "token": token
-            })
-        
-        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+    def check_password(self, password):
+        return bcrypt.check_password_hash(self.password_hash, password)
 
-    @app.route('/api/register', methods=['POST'])
-    def register():
-        data = request.json
-        
-        name = data.get('name') or data.get('institution_name')
-        email = data.get('email')
-        user_type = data.get('userType', 'lender')
-        
-        if not name or not email:
-            return jsonify({"success": False, "error": "Name and email are required"}), 400
-        
-        from models import User, UserRole, Lender, Buyer, Admin
-        
-        # Check if email exists in any table
-        if (User.query.filter_by(email=email).first() or 
-            Lender.query.filter_by(email=email).first() or
-            Buyer.query.filter_by(email=email).first() or
-            Admin.query.filter_by(email=email).first()):
-            return jsonify({"success": False, "error": "User already exists"}), 409
-        
-        if user_type in ['homebuyer', 'buyer']:
-            # Create in Buyer table
-            buyer = Buyer(
-                name=name,
-                email=email,
-                verified=True
-            )
-            buyer.set_password(data.get('password', 'defaultpass'))
-            db.session.add(buyer)
-            db.session.commit()
-            
-            token = create_access_token(identity=f"B{buyer.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": buyer.id,
-                    "name": buyer.name,
-                    "email": buyer.email,
-                    "userType": "homebuyer",
-                    "verified": buyer.verified
-                },
-                "token": token
-            }), 201
-        elif user_type == 'admin':
-            # Create in Admin table
-            admin = Admin(
-                name=name,
-                email=email,
-                verified=True
-            )
-            admin.set_password(data.get('password', 'defaultpass'))
-            db.session.add(admin)
-            db.session.commit()
-            
-            token = create_access_token(identity=f"A{admin.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": admin.id,
-                    "name": admin.name,
-                    "email": admin.email,
-                    "userType": "admin",
-                    "verified": admin.verified
-                },
-                "token": token
-            }), 201
-        else:
-            # Create in Lender table
-            lender = Lender(
-                email=email,
-                institution_name=name,
-                contact_person=name,
-                verified=True
-            )
-            lender.set_password(data.get('password', 'defaultpass'))
-            db.session.add(lender)
-            db.session.commit()
-            
-            token = create_access_token(identity=f"L{lender.id}")
-            return jsonify({
-                "success": True,
-                "user": {
-                    "id": lender.id,
-                    "name": lender.institution_name,
-                    "email": lender.email,
-                    "userType": "lender",
-                    "verified": lender.verified
-                },
-                "token": token
-            }), 201
 
-    @app.route('/api/validate-token', methods=['POST'])
-    @token_required()
-    def validate_token():
-        user_info = request.current_user
-        return jsonify({
-            "valid": True,
-            "user": {
-                "id": user_info['user_id'],
-                "email": user_info['email'],
-                "role": user_info['role']
-            }
-        })
+# Borrower model
+class Borrower(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    loan_amount = db.Column(db.Float, nullable=False)
 
-    @app.route('/api/lenders', methods=['GET'])
-    def get_all_lenders():
-        from models import Lender
-        lenders = Lender.query.all()
-        return jsonify([{
-            'id': lender.id,
-            'name': lender.institution_name,
-            'email': lender.email,
-            'verified': lender.verified,
-            'createdAt': lender.created_at.strftime('%Y-%m-%d')
-        } for lender in lenders])
+# ----------------------- ROUTES -----------------------
 
-    @app.route('/health')
-    def health_check():
-        return jsonify({"status": "healthy", "message": "NetLend API is running"})
-    
-    @app.route('/api/debug/admin', methods=['GET'])
-    def debug_admin():
-        """Debug endpoint to test admin functionality"""
-        return jsonify({
-            "message": "Admin debug endpoint working",
-            "timestamp": datetime.now().isoformat(),
-            "routes_available": [
-                "/api/admin/test",
-                "/api/admin/users", 
-                "/api/admin/properties",
-                "/api/admin/analytics"
-            ]
-        })
-    
-    @app.route('/api/loan-products', methods=['GET'])
-    def get_loan_products():
-        from models import MortgageListing
-        listings = MortgageListing.query.all()
-        return jsonify([{
-            'id': listing.id,
-            'lender': listing.lender.institution_name,
-            'rate': listing.interest_rate,
-            'term': listing.repayment_period,
-            'maxAmount': float(listing.price_range)
-        } for listing in listings])
-    
-    @app.route('/docs')
-    def swagger_docs():
-        return '''<!DOCTYPE html>
-        <html><head><title>NetLend API Documentation</title></head>
-        <body><h1>NetLend API Documentation</h1>
-        <h2>Authentication Endpoints</h2>
-        <p>POST /api/login - User authentication</p>
-        <p>POST /api/register - User registration</p>
-        <p>POST /api/validate-token - Validate JWT token</p>
-        <h2>Admin Endpoints</h2>
-        <p>GET /api/admin/users - Get all users</p>
-        <p>POST /api/admin/users - Create user</p>
-        <p>GET /api/admin/analytics - Get analytics</p>
-        <p>GET /api/admin/metrics - Get comprehensive metrics</p>
-        <h2>Lender Endpoints</h2>
-        <p>POST /api/mortgages/ - Create mortgage listing</p>
-        <p>GET /api/lender/{id}/mortgages - Get lender mortgages</p>
-        <p>GET /api/lenders - Get all lenders</p>
-        </body></html>'''
+@app.route('/')
+def home():
+    return jsonify({"message": "Welcome to NetLend API (Buyers & Borrowers)"})
 
-    return app
+# -------- Buyer Routes --------
 
+@app.route('/register', methods=['POST'])
+def register_buyer():
+    data = request.get_json()
+    full_name = data.get('full_name')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not full_name or not email or not password:
+        return jsonify({'error': 'All fields are required'}), 400
+
+    if Buyer.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already exists'}), 400
+
+    new_buyer = Buyer(full_name=full_name, email=email)
+    new_buyer.set_password(password)
+    db.session.add(new_buyer)
+    db.session.commit()
+
+    return jsonify({'message': 'Buyer registered successfully'}), 201
+
+
+@app.route('/login', methods=['POST'])
+def login_buyer():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    buyer = Buyer.query.filter_by(email=email).first()
+
+    if buyer and buyer.check_password(password):
+        return jsonify({'message': 'Login successful', 'buyer_id': buyer.id})
+    else:
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+# -------- Borrower Routes --------
+
+@app.route('/borrowers', methods=['POST'])
+def add_borrower():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    loan_amount = data.get('loan_amount')
+
+    if not name or not email or not loan_amount:
+        return jsonify({'error': 'All fields (name, email, loan_amount) are required'}), 400
+
+    if Borrower.query.filter_by(email=email).first():
+        return jsonify({'error': 'Borrower with this email already exists'}), 400
+
+    new_borrower = Borrower(name=name, email=email, loan_amount=loan_amount)
+    db.session.add(new_borrower)
+    db.session.commit()
+
+    return jsonify({'message': 'Borrower added successfully', 'borrower_id': new_borrower.id}), 201
+
+
+@app.route('/borrowers', methods=['GET'])
+def get_borrowers():
+    borrowers = Borrower.query.all()
+    result = [
+        {'id': b.id, 'name': b.name, 'email': b.email, 'loan_amount': b.loan_amount}
+        for b in borrowers
+    ]
+    return jsonify(result), 200
+
+
+# ----------------------- MAIN -----------------------
 if __name__ == '__main__':
-    app = create_app()
-    print("🚀 NetLend Backend Starting...")
-    print("📍 API: http://localhost:5000")
-    print("📚 Docs: http://localhost:5000/docs")
-    print("💚 Health: http://localhost:5000/health")
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    app.run(port=5001)
