@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from models import Lender, MortgageListing, MortgageApplication, Buyer
+from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
+from datetime import datetime, timedelta
 
 lender_bp = Blueprint('lender', __name__)
 
@@ -56,9 +57,28 @@ def get_applications():
     result = []
     for app in applications:
         buyer = Buyer.query.get(app.borrower_id)
+        # If no buyer found, check if it's a lender testing (fallback)
+        if not buyer:
+            lender = Lender.query.get(app.borrower_id)
+            applicant_name = lender.institution_name if lender else f'User {app.borrower_id}'
+            phone = lender.phone_number if lender else 'N/A'
+            email = lender.email if lender else 'N/A'
+            monthly_income = 'N/A'
+            employment_status = 'N/A'
+        else:
+            applicant_name = buyer.name
+            phone = buyer.phone_number or 'N/A'
+            email = buyer.email or 'N/A'
+            monthly_income = buyer.monthly_net_income or 'N/A'
+            employment_status = buyer.employment_status or 'N/A'
+            
         result.append({
             'id': app.id,
-            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'applicant': applicant_name,
+            'phone': phone,
+            'email': email,
+            'monthlyIncome': monthly_income,
+            'employmentStatus': employment_status,
             'amount': app.requested_amount,
             'status': app.status.value,
             'property': app.listing.property_title if app.listing else 'Unknown Property',
@@ -76,12 +96,31 @@ def get_lender_applications(lender_id):
     result = []
     for app in applications:
         buyer = Buyer.query.get(app.borrower_id)
+        # If no buyer found, check if it's a lender testing (fallback)
+        if not buyer:
+            lender = Lender.query.get(app.borrower_id)
+            applicant_name = lender.institution_name if lender else f'User {app.borrower_id}'
+            phone = lender.phone_number if lender else 'N/A'
+            email = lender.email if lender else 'N/A'
+            monthly_income = 'N/A'
+            employment_status = 'N/A'
+        else:
+            applicant_name = buyer.name
+            phone = buyer.phone_number or 'N/A'
+            email = buyer.email or 'N/A'
+            monthly_income = buyer.monthly_net_income or 'N/A'
+            employment_status = buyer.employment_status or 'N/A'
+            
         result.append({
             'id': app.id,
-            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'applicantName': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'buyerName': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'name': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'applicant': applicant_name,
+            'applicantName': applicant_name,
+            'buyerName': applicant_name,
+            'name': applicant_name,
+            'phone': phone,
+            'email': email,
+            'monthlyIncome': monthly_income,
+            'employmentStatus': employment_status,
             'amount': app.requested_amount,
             'status': app.status.value,
             'property': app.listing.property_title if app.listing else 'Unknown Property',
@@ -151,3 +190,92 @@ def update_lender_profile():
         print(f"Database commit failed: {e}")
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@lender_bp.route('/applications/<int:app_id>/approve', methods=['POST'])
+@jwt_required()
+def approve_application(app_id):
+    try:
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        # Get the application
+        application = MortgageApplication.query.get_or_404(app_id)
+        
+        # Verify lender owns this application
+        if application.lender_id != lender_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # Approve this application
+        application.status = ApplicationStatus.APPROVED
+        
+        # Reject all other applications for the same property
+        other_apps = MortgageApplication.query.filter(
+            MortgageApplication.listing_id == application.listing_id,
+            MortgageApplication.id != app_id,
+            MortgageApplication.status == ApplicationStatus.PENDING
+        ).all()
+        
+        for other_app in other_apps:
+            other_app.status = ApplicationStatus.REJECTED
+        
+        # Update property status to acquired
+        if application.listing:
+            application.listing.status = ListingStatus.ACQUIRED
+        
+        # Create active mortgage
+        active_mortgage = ActiveMortgage(
+            application_id=application.id,
+            borrower_id=application.borrower_id,
+            lender_id=application.lender_id,
+            principal_amount=application.requested_amount,
+            interest_rate=application.listing.interest_rate if application.listing else 12.0,
+            repayment_term=application.repayment_years * 12,
+            remaining_balance=application.requested_amount,
+            next_payment_due=datetime.now().date() + timedelta(days=30)
+        )
+        
+        db.session.add(active_mortgage)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Application approved. {len(other_apps)} other applications rejected.',
+            'activemortgage': {
+                'id': active_mortgage.id,
+                'principalAmount': active_mortgage.principal_amount,
+                'remainingBalance': active_mortgage.remaining_balance
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@lender_bp.route('/sold-mortgages', methods=['GET'])
+@jwt_required()
+def get_sold_mortgages():
+    try:
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        active_mortgages = ActiveMortgage.query.filter_by(lender_id=lender_id).all()
+        
+        result = []
+        for mortgage in active_mortgages:
+            buyer = Buyer.query.get(mortgage.borrower_id)
+            property_title = mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Unknown Property'
+            
+            result.append({
+                'id': mortgage.id,
+                'buyer': buyer.name if buyer else f'Buyer {mortgage.borrower_id}',
+                'property': property_title,
+                'principalAmount': mortgage.principal_amount,
+                'remainingBalance': mortgage.remaining_balance,
+                'interestRate': mortgage.interest_rate,
+                'status': mortgage.status.value,
+                'startDate': mortgage.created_at.strftime('%Y-%m-%d'),
+                'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

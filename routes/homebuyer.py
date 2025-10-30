@@ -294,7 +294,12 @@ def handle_applications():
         
         print(f'Loan amount: {loan_amount}, Repayment years: {repayment_years}')
         
-        borrower_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        if user_id.startswith('B'):
+            borrower_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            borrower_id = int(user_id[1:])  # Use lender ID as borrower for testing
+        else:
+            borrower_id = int(user_id)
         
         # Check if buyer already applied for this property
         existing_app = MortgageApplication.query.filter_by(
