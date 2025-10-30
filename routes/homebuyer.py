@@ -6,6 +6,39 @@ from datetime import datetime
 
 homebuyer_bp = Blueprint('homebuyer', __name__)
 
+@homebuyer_bp.route('/profile', methods=['GET'])
+@jwt_required()
+def get_profile():
+    user_id = get_jwt_identity()
+    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    buyer = Buyer.query.get(buyer_id)
+    
+    if not buyer:
+        return jsonify({'error': 'Buyer not found'}), 404
+    
+    return jsonify({
+        'name': buyer.name or '',
+        'phoneNumber': buyer.phone_number or '',
+        'nationalId': buyer.national_id or '',
+        'gender': buyer.gender or '',
+        'maritalStatus': buyer.marital_status or '',
+        'dependents': buyer.dependents or 0,
+        'employmentStatus': buyer.employment_status or '',
+        'employerName': buyer.employer_name or '',
+        'monthlyGrossIncome': buyer.monthly_gross_income or '',
+        'monthlyNetIncome': buyer.monthly_net_income or '',
+        'monthlyExpenses': buyer.monthly_expenses or '',
+        'hasExistingLoans': buyer.has_existing_loans or False,
+        'monthlyLoanRepayments': buyer.monthly_loan_repayments or '',
+        'estimatedPropertyValue': buyer.estimated_property_value or '',
+        'desiredLoanAmount': buyer.desired_loan_amount or '',
+        'downPaymentAmount': buyer.down_payment_amount or '',
+        'bankName': buyer.bank_name or '',
+        'accountNumber': buyer.account_number or '',
+        'profileComplete': buyer.profile_complete or False,
+        'creditworthinessScore': buyer.creditworthiness_score or 0
+    })
+
 @homebuyer_bp.route('/profile', methods=['PATCH'])
 @jwt_required()
 def update_profile():
@@ -67,26 +100,6 @@ def update_profile():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@homebuyer_bp.route('/creditworthiness', methods=['GET'])
-@jwt_required()
-def get_creditworthiness():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    buyer = Buyer.query.get(buyer_id)
-    
-    if not buyer:
-        return jsonify({'error': 'Buyer not found'}), 404
-    
-    score = buyer.calculate_creditworthiness_score()
-    db.session.commit()
-    
-    return jsonify({
-        'score': score,
-        'riskLevel': 'Low Risk' if score >= 80 else 'Medium Risk',
-        'recommendation': 'Good candidate',
-        'profileComplete': buyer.profile_complete
-    })
-
 @homebuyer_bp.route('/properties', methods=['GET'])
 def get_properties():
     listings = MortgageListing.query.all()
@@ -103,3 +116,43 @@ def get_properties():
         'status': listing.status.value,
         'images': listing.images or []
     } for listing in listings])
+
+@homebuyer_bp.route('/creditworthiness', methods=['GET'])
+@jwt_required()
+def get_creditworthiness():
+    user_id = get_jwt_identity()
+    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    buyer = Buyer.query.get(buyer_id)
+    
+    if not buyer:
+        return jsonify({'error': 'Buyer not found'}), 404
+    
+    score = buyer.calculate_creditworthiness_score()
+    db.session.commit()
+    
+    # Determine eligibility level
+    if score >= 80:
+        level = 'Highly Eligible'
+        color = 'green'
+        recommendation = 'Excellent candidate for mortgage approval'
+    elif score >= 60:
+        level = 'Eligible'
+        color = 'blue'
+        recommendation = 'Good candidate with strong profile'
+    elif score >= 40:
+        level = 'Conditionally Eligible'
+        color = 'orange'
+        recommendation = 'May require additional documentation'
+    else:
+        level = 'Not Eligible'
+        color = 'red'
+        recommendation = 'Profile needs improvement before approval'
+    
+    return jsonify({
+        'score': score,
+        'maxScore': 110,
+        'eligibilityLevel': level,
+        'color': color,
+        'recommendation': recommendation,
+        'profileComplete': buyer.profile_complete
+    })
