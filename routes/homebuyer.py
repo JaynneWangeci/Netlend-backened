@@ -249,7 +249,12 @@ def get_creditworthiness():
 def get_my_mortgages():
     try:
         user_id = get_jwt_identity()
-        buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
         
         from models import ActiveMortgage, PaymentSchedule
         mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
