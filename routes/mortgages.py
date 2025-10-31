@@ -43,9 +43,11 @@ def get_mortgages():
     }), 200
 
 @mortgages_bp.route('/', methods=['POST'])
+@jwt_required()
 def create_mortgage():
     try:
-        lender_id = 1  # Hardcoded for testing
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
         data = request.get_json()
         print(f"Creating mortgage with data: {data}")  # Debug log
         

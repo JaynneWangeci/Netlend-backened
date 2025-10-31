@@ -6,6 +6,29 @@ from datetime import datetime, timedelta
 
 lender_bp = Blueprint('lender', __name__)
 
+@lender_bp.route('/mortgages', methods=['GET'])
+@jwt_required()
+def get_my_mortgages():
+    user_id = get_jwt_identity()
+    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    
+    listings = MortgageListing.query.filter_by(lender_id=lender_id).all()
+    
+    return jsonify([{
+        'id': listing.id,
+        'title': listing.property_title,
+        'type': listing.property_type.value,
+        'bedrooms': listing.bedrooms,
+        'location': f"{listing.address}, {listing.county.value}",
+        'price': float(listing.price_range),
+        'rate': listing.interest_rate,
+        'term': listing.repayment_period,
+        'status': listing.status.value,
+        'editable': listing.status.value == 'active',
+        'images': listing.images if listing.images else [],
+        'createdAt': listing.created_at.strftime('%Y-%m-%d')
+    } for listing in listings])
+
 @lender_bp.route('/<int:lender_id>/mortgages', methods=['GET'])
 def get_lender_mortgages(lender_id):
     listings = MortgageListing.query.filter_by(lender_id=lender_id).all()
