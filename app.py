@@ -10,6 +10,8 @@ from flask_mail import Mail  # Email functionality (configured but not actively 
 from functools import wraps  # Decorator utilities
 from datetime import datetime, timedelta  # Date/time handling
 from config import Config  # Application configuration
+from dotenv import load_dotenv  
+load_dotenv()  # Load environment variables from .env file 
 
 # Initialize Flask extensions - these will be configured when the app is created
 db = SQLAlchemy()  # Database ORM instance
@@ -22,12 +24,15 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)  # Load configuration from config.py
     
+    
     # Initialize extensions with the app instance
     # This pattern allows for multiple app instances and easier testing
     db.init_app(app)  # Configure SQLAlchemy with app
-    migrate.init_app(app, db)  # Set up database migrations
     jwt.init_app(app)  # Configure JWT authentication
     mail.init_app(app)  # Set up email service
+    migrate.init_app(app, db)  # Set up database migrations
+    with app.app_context():
+        upgrade()  # Apply any pending database migrations at startup
 
     # Configure CORS (Cross-Origin Resource Sharing)
     # This allows the frontend (React/Vue) to communicate with the backend API
