@@ -1,9 +1,19 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
-from datetime import datetime, timedelta
+# NetLend Backend - Lender Routes
+# This module handles all lender-specific functionality including:
+# - Lender dashboard with key metrics and statistics
+# - Mortgage listing management (create, read, update, delete)
+# - Mortgage application processing and approval workflow
+# - Buyer information access for application review
+# - Active mortgage tracking and sold mortgage management
+# - Lender profile management and business information
 
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication
+from app import db  # Database instance
+from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
+from datetime import datetime, timedelta  # Date calculations for mortgage terms
+
+# Create Blueprint for lender routes with URL prefix /api/lender
 lender_bp = Blueprint('lender', __name__)
 
 @lender_bp.route('/mortgages', methods=['GET'])
@@ -215,46 +225,77 @@ def update_lender_profile():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @lender_bp.route('/applications/<int:app_id>/approve', methods=['POST'])
-@jwt_required()
+@jwt_required()  # Requires lender authentication
 def approve_application(app_id):
+    """LENDER ENDPOINT: Approve mortgage application with automatic workflow
+    
+    This endpoint handles the complete mortgage approval workflow:
+    
+    APPROVAL PROCESS:
+    1. Validates lender ownership of the application
+    2. Approves the selected application
+    3. Automatically rejects all other pending applications for the same property
+    4. Updates property status from ACTIVE to ACQUIRED
+    5. Creates ActiveMortgage record for payment tracking
+    6. Sets up initial payment schedule
+    
+    BUSINESS LOGIC:
+    - Only one application can be approved per property
+    - All other applications are automatically rejected to prevent conflicts
+    - Property becomes unavailable for new applications
+    - Mortgage tracking begins immediately
+    
+    INTEGRATION POINTS:
+    - Updates buyer's "My Mortgages" section
+    - Updates lender's "Sold Mortgages" section
+    - Removes property from public browsing (no longer ACTIVE)
+    - Triggers payment schedule generation
+    
+    Returns: Success confirmation with active mortgage details
+    """
     try:
+        # Extract and validate lender ID from JWT token
         user_id = get_jwt_identity()
         lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
         
-        # Get the application
+        # Fetch the mortgage application
         application = MortgageApplication.query.get_or_404(app_id)
         
-        # Verify lender owns this application
+        # Security check: Ensure lender owns this application
         if application.lender_id != lender_id:
             return jsonify({'error': 'Unauthorized'}), 403
         
-        # Approve this application
+        # STEP 1: Approve the selected application
         application.status = ApplicationStatus.APPROVED
         
-        # Reject all other applications for the same property
+        # STEP 2: Automatically reject all other pending applications for the same property
+        # This prevents multiple approvals for the same property and ensures data consistency
         other_apps = MortgageApplication.query.filter(
-            MortgageApplication.listing_id == application.listing_id,
-            MortgageApplication.id != app_id,
-            MortgageApplication.status == ApplicationStatus.PENDING
+            MortgageApplication.listing_id == application.listing_id,  # Same property
+            MortgageApplication.id != app_id,  # Exclude the approved application
+            MortgageApplication.status == ApplicationStatus.PENDING  # Only pending applications
         ).all()
         
+        # Mark all other applications as rejected
         for other_app in other_apps:
             other_app.status = ApplicationStatus.REJECTED
         
-        # Update property status to acquired
+        # STEP 3: Update property status to ACQUIRED
+        # This removes the property from public browsing and marks it as sold
         if application.listing:
             application.listing.status = ListingStatus.ACQUIRED
         
-        # Create active mortgage
+        # STEP 4: Create ActiveMortgage record for payment tracking
+        # This record will be used to track payments, calculate balances, and manage the mortgage lifecycle
         active_mortgage = ActiveMortgage(
-            application_id=application.id,
-            borrower_id=application.borrower_id,
-            lender_id=application.lender_id,
-            principal_amount=application.requested_amount,
-            interest_rate=application.listing.interest_rate if application.listing else 12.0,
-            repayment_term=application.repayment_years * 12,
-            remaining_balance=application.requested_amount,
-            next_payment_due=datetime.now().date() + timedelta(days=30)
+            application_id=application.id,  # Link to original application
+            borrower_id=application.borrower_id,  # Buyer who will make payments
+            lender_id=application.lender_id,  # Lender who will receive payments
+            principal_amount=application.requested_amount,  # Original loan amount
+            interest_rate=application.listing.interest_rate if application.listing else 12.0,  # Annual rate
+            repayment_term=application.repayment_years * 12,  # Convert years to months
+            remaining_balance=application.requested_amount,  # Initially equals principal
+            next_payment_due=datetime.now().date() + timedelta(days=30)  # First payment in 30 days
         )
         
         db.session.add(active_mortgage)

@@ -1,42 +1,49 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-from flask_cors import CORS
-from flask_mail import Mail
-from functools import wraps
-from datetime import datetime, timedelta
-from config import Config
+# NetLend Backend - Main Application File
+# This file sets up the Flask application, configures extensions, and defines core authentication routes
 
-# Initialize extensions
-db = SQLAlchemy()
-migrate = Migrate()
-jwt = JWTManager()
-mail = Mail()
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy  # ORM for database operations
+from flask_migrate import Migrate  # Database schema versioning
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity  # JWT authentication
+from flask_cors import CORS  # Cross-origin resource sharing for frontend communication
+from flask_mail import Mail  # Email functionality (configured but not actively used)
+from functools import wraps  # Decorator utilities
+from datetime import datetime, timedelta  # Date/time handling
+from config import Config  # Application configuration
+
+# Initialize Flask extensions - these will be configured when the app is created
+db = SQLAlchemy()  # Database ORM instance
+migrate = Migrate()  # Database migration manager
+jwt = JWTManager()  # JWT token manager
+mail = Mail()  # Email service manager
 
 def create_app():
+    """Application factory pattern - creates and configures Flask application instance"""
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object(Config)  # Load configuration from config.py
     
-    # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    jwt.init_app(app)
-    mail.init_app(app)
+    # Initialize extensions with the app instance
+    # This pattern allows for multiple app instances and easier testing
+    db.init_app(app)  # Configure SQLAlchemy with app
+    migrate.init_app(app, db)  # Set up database migrations
+    jwt.init_app(app)  # Configure JWT authentication
+    mail.init_app(app)  # Set up email service
 
-    # Configure CORS
+    # Configure CORS (Cross-Origin Resource Sharing)
+    # This allows the frontend (React/Vue) to communicate with the backend API
+    # from different ports/domains during development
     CORS(
         app,
         origins=[
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-            'http://localhost:3000',
-            'http://localhost:3001'
+            'http://localhost:5173',  # Vite dev server (React/Vue)
+            'http://127.0.0.1:5173',  # Alternative localhost format
+            'http://localhost:3000',  # Create React App default port
+            'http://localhost:3001'   # Alternative React port
         ],
-        supports_credentials=True,
-        allow_headers=['Content-Type', 'Authorization', 'Accept'],
-        methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-        expose_headers=['Content-Type', 'Authorization']
+        supports_credentials=True,  # Allow cookies and auth headers
+        allow_headers=['Content-Type', 'Authorization', 'Accept'],  # Permitted request headers
+        methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],  # Allowed HTTP methods
+        expose_headers=['Content-Type', 'Authorization']  # Headers exposed to frontend
     )
 
     # Import and register blueprints
@@ -103,20 +110,29 @@ def create_app():
         return decorator
 
     # Auth endpoints
+    # AUTHENTICATION ENDPOINTS
+    # These routes handle user login, registration, and token validation
+    # The system supports 4 user types: Buyers (B), Lenders (L), Admins (A), and Legacy Users (U)
+    
     @app.route('/api/login', methods=['POST'])
     def login():
+        """Universal login endpoint that checks all user tables and returns appropriate JWT token"""
         data = request.json
         email = data.get('email')
         password = data.get('password')
         
+        # Basic validation
         if not email:
             return jsonify({"success": False, "error": "Email required"}), 400
         
+        # Import models here to avoid circular imports
         from models import User, Lender, Buyer, Admin
         
-        # Check User table (legacy admin)
+        # Check User table (legacy admin users)
+        # This table contains the original admin users before separate tables were created
         user = User.query.filter_by(email=email).first()
         if user and password and user.check_password(password):
+            # Create JWT token with 'U' prefix to identify legacy users
             token = create_access_token(identity=f"U{user.id}")
             return jsonify({
                 "success": True,
@@ -124,10 +140,10 @@ def create_app():
                     "id": user.id,
                     "name": user.name,
                     "email": user.email,
-                    "userType": user.role.value,
+                    "userType": user.role.value,  # admin, lender, or homebuyer
                     "verified": user.verified
                 },
-                "token": token
+                "token": token  # JWT token for subsequent API calls
             })
         
         # Check Buyer table
