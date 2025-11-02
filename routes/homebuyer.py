@@ -1,9 +1,19 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType, PaymentSchedule
-from datetime import datetime
+# NetLend Backend - Homebuyer Routes
+# This module handles all homebuyer-specific functionality including:
+# - Comprehensive buyer profile management (34+ fields)
+# - Creditworthiness assessment and scoring
+# - Property browsing with filtering capabilities
+# - Mortgage application submission and tracking
+# - Active mortgage monitoring and payment history
+# - Document upload and verification status
 
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication
+from app import db  # Database instance
+from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType  # Models
+from datetime import datetime  # Date handling
+
+# Create Blueprint for homebuyer routes with URL prefix /api/homebuyer
 homebuyer_bp = Blueprint('homebuyer', __name__)
 
 @homebuyer_bp.route('/test-applications', methods=['POST'])
@@ -11,13 +21,34 @@ def test_applications():
     return jsonify({'message': 'Applications endpoint working', 'data': request.json})
 
 @homebuyer_bp.route('/profile', methods=['GET'])
-@jwt_required()
+@jwt_required()  # Requires valid JWT token
 def get_profile():
+    """BUYER ENDPOINT: Get comprehensive buyer profile information
+    
+    Returns all 34+ profile fields needed for mortgage assessment including:
+    - Personal information (name, contact, demographics)
+    - Employment and income details
+    - Financial obligations and existing loans
+    - Property preferences and loan requirements
+    - Banking information
+    - Document verification status
+    - Profile completion status and creditworthiness score
+    
+    This data is used throughout the application for:
+    - Profile completion tracking
+    - Creditworthiness assessment
+    - Mortgage application pre-filling
+    - Lender decision making
+    """
+    # Extract buyer ID from JWT token
+    # Supports multiple token formats: B{id}, L{id}, A{id}, U{id}
     user_id = get_jwt_identity()
     if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
-        buyer_id = int(user_id[1:])
+        buyer_id = int(user_id[1:])  # Extract numeric ID from prefixed token
     else:
-        buyer_id = int(user_id)
+        buyer_id = int(user_id)  # Handle non-prefixed tokens
+    
+    # Fetch buyer record from database
     buyer = Buyer.query.get(buyer_id)
     
     if not buyer:
@@ -202,20 +233,45 @@ def get_dashboard():
         return jsonify({'error': str(e)}), 500
 
 @homebuyer_bp.route('/creditworthiness', methods=['GET'])
-@jwt_required()
+@jwt_required()  # Requires authentication
 def get_creditworthiness():
+    """BUYER ENDPOINT: Calculate and return creditworthiness assessment
+    
+    This endpoint performs real-time creditworthiness evaluation using a sophisticated
+    algorithm that considers multiple factors:
+    
+    SCORING ALGORITHM (0-100 points):
+    - Income to loan ratio (40% weight): Payment affordability
+    - Employment stability (20% weight): Job security assessment
+    - Down payment percentage (20% weight): Financial commitment
+    - Existing loan burden (10% weight): Current debt obligations
+    - Document completeness (10% weight): Application readiness
+    
+    ELIGIBILITY LEVELS:
+    - 80-100: Highly Eligible (green) - Excellent mortgage candidate
+    - 60-79: Eligible (blue) - Good candidate with strong profile
+    - 40-59: Conditionally Eligible (orange) - May need additional docs
+    - 0-39: Not Eligible (red) - Profile needs improvement
+    
+    Used by:
+    - Buyer dashboard for self-assessment
+    - Lenders for application evaluation
+    - System for automatic pre-qualification
+    """
+    # Extract and validate buyer ID from JWT token
     user_id = get_jwt_identity()
     if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
         buyer_id = int(user_id[1:])
     else:
         buyer_id = int(user_id)
-    buyer = Buyer.query.get(buyer_id)
     
+    buyer = Buyer.query.get(buyer_id)
     if not buyer:
         return jsonify({'error': 'Buyer not found'}), 404
     
+    # Calculate creditworthiness score using the buyer's profile data
     score = buyer.calculate_creditworthiness_score()
-    db.session.commit()
+    db.session.commit()  # Save updated score to database
     
     # Determine eligibility level
     if score >= 80:
