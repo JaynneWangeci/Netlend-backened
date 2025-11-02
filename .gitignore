@@ -47,5 +47,3 @@ Thumbs.db
 instance/
 .webassets-cache
 
-# Migrations
-migrations/

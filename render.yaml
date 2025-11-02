@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: netlend-backend
+    name: netlend-backened
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn 'app:create_app()'
+    startCommand: gunicorn "app:create_app()"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -15,9 +15,7 @@ services:
         fromDatabase:
           name: netlend-db
           property: connectionString
-  - type: pserv
-    name: netlend-db
-    env: postgresql
+
+databases:
+  - name: netlend-db
     plan: free
-    databaseName: netlend
-    user: netlend_user

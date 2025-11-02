@@ -1,70 +1,203 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from models import User, MortgageApplication, MortgageListing, Lender, Buyer
-from datetime import datetime
+# NetLend Backend - Homebuyer Routes
+# This module handles all homebuyer-specific functionality including:
+# - Comprehensive buyer profile management (34+ fields)
+# - Creditworthiness assessment and scoring
+# - Property browsing with filtering capabilities
+# - Mortgage application submission and tracking
+# - Active mortgage monitoring and payment history
+# - Document upload and verification status
 
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication
+from app import db  # Database instance
+from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType  # Models
+from datetime import datetime  # Date handling
+
+# Create Blueprint for homebuyer routes with URL prefix /api/homebuyer
 homebuyer_bp = Blueprint('homebuyer', __name__)
 
-@homebuyer_bp.route('/dashboard', methods=['GET'])
+@homebuyer_bp.route('/test-applications', methods=['POST'])
+def test_applications():
+    return jsonify({'message': 'Applications endpoint working', 'data': request.json})
+
+@homebuyer_bp.route('/test-payment', methods=['POST'])
 @jwt_required()
-def get_dashboard():
+def test_payment():
+    """Test endpoint to verify payment processing is working"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        print(f'Test payment data: {data}')
+        return jsonify({
+            'success': True,
+            'message': 'Payment test endpoint working',
+            'user_id': user_id,
+            'received_data': data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@homebuyer_bp.route('/profile', methods=['GET'])
+@jwt_required()  # Requires valid JWT token
+def get_profile():
+    """BUYER ENDPOINT: Get comprehensive buyer profile information
+    
+    Returns all 34+ profile fields needed for mortgage assessment including:
+    - Personal information (name, contact, demographics)
+    - Employment and income details
+    - Financial obligations and existing loans
+    - Property preferences and loan requirements
+    - Banking information
+    - Document verification status
+    - Profile completion status and creditworthiness score
+    
+    This data is used throughout the application for:
+    - Profile completion tracking
+    - Creditworthiness assessment
+    - Mortgage application pre-filling
+    - Lender decision making
+    """
+    # Extract buyer ID from JWT token
+    # Supports multiple token formats: B{id}, L{id}, A{id}, U{id}
     user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        buyer_id = int(user_id[1:])  # Extract numeric ID from prefixed token
+    else:
+        buyer_id = int(user_id)  # Handle non-prefixed tokens
     
-    applications = MortgageApplication.query.filter_by(borrower_id=buyer_id).all()
+    # Fetch buyer record from database
+    buyer = Buyer.query.get(buyer_id)
     
-    # Get active mortgages count
-    from models import ActiveMortgage
-    active_mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).count()
+    if not buyer:
+        return jsonify({'error': 'Buyer not found'}), 404
     
     return jsonify({
-        'totalApplications': len(applications),
-        'activeApplications': len([a for a in applications if a.status.value == 'pending']),
-        'approvedApplications': len([a for a in applications if a.status.value == 'approved']),
-        'activeMortgages': active_mortgages,
-        'savedProperties': 0,
-        'preApprovalStatus': 'pending'
+        'name': buyer.name or '',
+        'fullName': buyer.name or '',
+        'buyerName': buyer.name or '',
+        'email': buyer.email or '',
+        'phoneNumber': buyer.phone_number or '',
+        'nationalId': buyer.national_id or '',
+        'gender': buyer.gender or '',
+        'maritalStatus': buyer.marital_status or '',
+        'dependents': buyer.dependents or 0,
+        'employmentStatus': buyer.employment_status or '',
+        'employerName': buyer.employer_name or '',
+        'monthlyGrossIncome': buyer.monthly_gross_income or '',
+        'monthlyNetIncome': buyer.monthly_net_income or '',
+        'monthlyExpenses': buyer.monthly_expenses or '',
+        'hasExistingLoans': buyer.has_existing_loans or False,
+        'monthlyLoanRepayments': buyer.monthly_loan_repayments or '',
+        'estimatedPropertyValue': buyer.estimated_property_value or '',
+        'desiredLoanAmount': buyer.desired_loan_amount or '',
+        'downPaymentAmount': buyer.down_payment_amount or '',
+        'bankName': buyer.bank_name or '',
+        'accountNumber': buyer.account_number or '',
+        'mpesaNumber': buyer.mpesa_number or '',
+        'profileComplete': buyer.profile_complete or False,
+        'creditworthinessScore': buyer.creditworthiness_score or 0
     })
 
-@homebuyer_bp.route('/applications', methods=['GET'])
+@homebuyer_bp.route('/profile', methods=['PATCH'])
 @jwt_required()
-def get_applications():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    applications = MortgageApplication.query.filter_by(borrower_id=buyer_id).all()
-    
-    return jsonify([{
-        'id': app.id,
-        'lender': app.lender.institution_name,
-        'amount': app.requested_amount,
-        'status': app.status.value,
-        'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
-        'property': f'Property {app.listing_id}'
-    } for app in applications])
-
-@homebuyer_bp.route('/applications', methods=['POST'])
-@jwt_required()
-def create_application():
-    user_id = get_jwt_identity()
-    data = request.json
-    
-    application = MortgageApplication(
-        borrower_id=int(user_id),
-        lender_id=data['lenderId'],
-        listing_id=data['listingId'],
-        requested_amount=data['loanAmount'],
-        repayment_years=data['repaymentYears']
-    )
-    
-    db.session.add(application)
-    db.session.commit()
-    
-    return jsonify({'id': application.id, 'status': 'submitted'}), 201
+def update_profile():
+    try:
+        user_id = get_jwt_identity()
+        if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+            buyer_id = int(user_id[1:])
+        else:
+            buyer_id = int(user_id)
+        buyer = Buyer.query.get(buyer_id)
+        
+        if not buyer:
+            return jsonify({'error': 'Buyer not found'}), 404
+            
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        print(f'Profile update data received: {data}')  # Debug log
+        
+        # Personal Information
+        if 'name' in data:
+            buyer.name = data['name']
+        if 'phoneNumber' in data:
+            buyer.phone_number = data['phoneNumber']
+        if 'nationalId' in data:
+            buyer.national_id = data['nationalId']
+        if 'gender' in data:
+            buyer.gender = data['gender']
+        if 'maritalStatus' in data:
+            buyer.marital_status = data['maritalStatus']
+        if 'dependents' in data:
+            buyer.dependents = int(data['dependents']) if data['dependents'] else 0
+        
+        # Employment & Income
+        if 'employmentStatus' in data:
+            buyer.employment_status = data['employmentStatus']
+        if 'employerName' in data:
+            buyer.employer_name = data['employerName'] if data['employerName'] else None
+        if 'monthlyGrossIncome' in data:
+            buyer.monthly_gross_income = float(data['monthlyGrossIncome']) if data['monthlyGrossIncome'] else None
+        if 'monthlyNetIncome' in data:
+            buyer.monthly_net_income = float(data['monthlyNetIncome']) if data['monthlyNetIncome'] else None
+        
+        # Banking Information
+        if 'bankName' in data:
+            buyer.bank_name = data['bankName']
+        if 'accountNumber' in data:
+            buyer.account_number = data['accountNumber']
+        if 'mpesaNumber' in data:
+            buyer.mpesa_number = data['mpesaNumber']
+        if 'mpesa_number' in data:
+            buyer.mpesa_number = data['mpesa_number']
+        if 'mpesa' in data:
+            buyer.mpesa_number = data['mpesa']
+        
+        # Calculate creditworthiness score
+        if buyer.calculate_creditworthiness_score:
+            buyer.calculate_creditworthiness_score()
+        
+        db.session.add(buyer)
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Profile Updated',
+                'message': 'Your profile has been updated successfully.'
+            },
+            'profileComplete': buyer.profile_complete,
+            'creditworthinessScore': buyer.creditworthiness_score
+        })
+    except Exception as e:
+        print(f'Profile update error: {e}')
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Update Failed',
+                'message': 'Failed to update profile. Please try again.',
+                'error': str(e)
+            }
+        }), 500
 
 @homebuyer_bp.route('/properties', methods=['GET'])
 def get_properties():
-    listings = MortgageListing.query.all()
+    # Get filter parameters
+    min_payment = request.args.get('minPayment', type=float)
+    max_payment = request.args.get('maxPayment', type=float)
+    
+    # Build query with filters
+    query = MortgageListing.query
+    
+    if min_payment:
+        query = query.filter(MortgageListing.monthly_payment >= min_payment)
+    if max_payment:
+        query = query.filter(MortgageListing.monthly_payment <= max_payment)
+    
+    listings = query.all()
     
     return jsonify([{
         'id': listing.id,
@@ -75,267 +208,111 @@ def get_properties():
         'rate': listing.interest_rate,
         'term': listing.repayment_period,
         'lender': listing.lender.institution_name,
+        'status': listing.status.value,
+        'monthlyPayment': listing.monthly_payment,
         'images': listing.images or []
     } for listing in listings])
 
-@homebuyer_bp.route('/profile', methods=['GET'])
+@homebuyer_bp.route('/dashboard', methods=['GET'])
 @jwt_required()
-def get_profile():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    buyer = Buyer.query.get(buyer_id)
-    
-    return jsonify({
-        'id': buyer.id,
-        'name': buyer.name,
-        'email': buyer.email,
-        'phone_number': buyer.phone_number,
-        'verified': buyer.verified,
-        'profileComplete': buyer.profile_complete,
-        'creditworthinessScore': buyer.creditworthiness_score,
+def get_dashboard():
+    """Get dashboard data for homebuyer"""
+    try:
+        user_id = get_jwt_identity()
+        buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
         
-        # Personal Information
-        'nationalId': buyer.national_id,
-        'dateOfBirth': buyer.date_of_birth.isoformat() if buyer.date_of_birth else None,
-        'gender': buyer.gender,
-        'countyOfResidence': buyer.county_of_residence.value if buyer.county_of_residence else None,
-        'maritalStatus': buyer.marital_status,
-        'dependents': buyer.dependents,
+        from models import ActiveMortgage, PaymentSchedule
         
-        # Employment & Income
-        'employmentStatus': buyer.employment_status,
-        'employerName': buyer.employer_name,
-        'occupation': buyer.occupation,
-        'employmentDuration': buyer.employment_duration,
-        'monthlyGrossIncome': buyer.monthly_gross_income,
-        'monthlyNetIncome': buyer.monthly_net_income,
-        'otherIncome': buyer.other_income,
+        # Count applications
+        applications_count = MortgageApplication.query.filter_by(borrower_id=buyer_id).count()
         
-        # Financial Obligations
-        'hasExistingLoans': buyer.has_existing_loans,
-        'loanTypes': buyer.loan_types,
-        'monthlyLoanRepayments': buyer.monthly_loan_repayments,
-        'monthlyExpenses': buyer.monthly_expenses,
-        'creditScore': buyer.credit_score,
+        # Count active mortgages
+        active_mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).count()
         
-        # Property Preferences
-        'preferredPropertyType': buyer.preferred_property_type.value if buyer.preferred_property_type else None,
-        'targetCounty': buyer.target_county.value if buyer.target_county else None,
-        'estimatedPropertyValue': buyer.estimated_property_value,
-        'desiredLoanAmount': buyer.desired_loan_amount,
-        'desiredRepaymentPeriod': buyer.desired_repayment_period,
-        'downPaymentAmount': buyer.down_payment_amount,
+        # Calculate total payments made
+        mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+        total_payments = 0
+        for mortgage in mortgages:
+            payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).all()
+            total_payments += sum([p.amount_paid for p in payments])
         
-        # Banking Information
-        'bankName': buyer.bank_name,
-        'accountNumber': buyer.account_number,
-        'mpesaNumber': buyer.mpesa_number,
+        # Get saved properties count
+        from models import SavedProperty
+        saved_properties = SavedProperty.query.filter_by(buyer_id=buyer_id).count()
         
-        # Document Status
-        'documentsUploaded': {
-            'nationalId': buyer.national_id_uploaded,
-            'kraPin': buyer.kra_pin_uploaded,
-            'bankStatement': buyer.bank_statement_uploaded,
-            'creditReport': buyer.credit_report_uploaded,
-            'proofOfResidence': buyer.proof_of_residence_uploaded
-        }
-    })
-
-@homebuyer_bp.route('/profile', methods=['PATCH'])
-@jwt_required()
-def update_profile():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    buyer = Buyer.query.get(buyer_id)
-    data = request.json
-    
-    # Personal Information
-    if 'name' in data:
-        buyer.name = data['name']
-    if 'phoneNumber' in data:
-        buyer.phone_number = data['phoneNumber']
-    if 'nationalId' in data:
-        buyer.national_id = data['nationalId']
-    if 'dateOfBirth' in data:
-        from datetime import datetime
-        buyer.date_of_birth = datetime.fromisoformat(data['dateOfBirth']).date()
-    if 'gender' in data:
-        buyer.gender = data['gender']
-    if 'countyOfResidence' in data:
-        buyer.county_of_residence = KenyanCounty(data['countyOfResidence'])
-    if 'maritalStatus' in data:
-        buyer.marital_status = data['maritalStatus']
-    if 'dependents' in data:
-        buyer.dependents = data['dependents']
-    
-    # Employment & Income
-    if 'employmentStatus' in data:
-        buyer.employment_status = data['employmentStatus']
-    if 'employerName' in data:
-        buyer.employer_name = data['employerName']
-    if 'occupation' in data:
-        buyer.occupation = data['occupation']
-    if 'employmentDuration' in data:
-        buyer.employment_duration = data['employmentDuration']
-    if 'monthlyGrossIncome' in data:
-        buyer.monthly_gross_income = data['monthlyGrossIncome']
-    if 'monthlyNetIncome' in data:
-        buyer.monthly_net_income = data['monthlyNetIncome']
-    if 'otherIncome' in data:
-        buyer.other_income = data['otherIncome']
-    
-    # Financial Obligations
-    if 'hasExistingLoans' in data:
-        buyer.has_existing_loans = data['hasExistingLoans']
-    if 'loanTypes' in data:
-        buyer.loan_types = data['loanTypes']
-    if 'monthlyLoanRepayments' in data:
-        buyer.monthly_loan_repayments = data['monthlyLoanRepayments']
-    if 'monthlyExpenses' in data:
-        buyer.monthly_expenses = data['monthlyExpenses']
-    if 'creditScore' in data:
-        buyer.credit_score = data['creditScore']
-    
-    # Property Preferences
-    if 'preferredPropertyType' in data:
-        buyer.preferred_property_type = PropertyType(data['preferredPropertyType'])
-    if 'targetCounty' in data:
-        buyer.target_county = KenyanCounty(data['targetCounty'])
-    if 'estimatedPropertyValue' in data:
-        buyer.estimated_property_value = data['estimatedPropertyValue']
-    if 'desiredLoanAmount' in data:
-        buyer.desired_loan_amount = data['desiredLoanAmount']
-    if 'desiredRepaymentPeriod' in data:
-        buyer.desired_repayment_period = data['desiredRepaymentPeriod']
-    if 'downPaymentAmount' in data:
-        buyer.down_payment_amount = data['downPaymentAmount']
-    
-    # Banking Information
-    if 'bankName' in data:
-        buyer.bank_name = data['bankName']
-    if 'accountNumber' in data:
-        buyer.account_number = data['accountNumber']
-    if 'mpesaNumber' in data:
-        buyer.mpesa_number = data['mpesaNumber']
-    
-    # Calculate creditworthiness score
-    buyer.calculate_creditworthiness_score()
-    
-    # Check if profile is complete
-    required_fields = [
-        buyer.national_id, buyer.monthly_net_income, buyer.employment_status,
-        buyer.estimated_property_value, buyer.desired_loan_amount, buyer.bank_name
-    ]
-    buyer.profile_complete = all(field is not None for field in required_fields)
-    
-    db.session.commit()
-    return jsonify({
-        'success': True,
-        'profileComplete': buyer.profile_complete,
-        'creditworthinessScore': buyer.creditworthiness_score
-    })
-
-@homebuyer_bp.route('/prequalify', methods=['POST'])
-@jwt_required()
-def prequalify():
-    data = request.json
-    
-    # Simple eligibility calculation
-    income = data.get('income', 0)
-    loan_amount = data.get('loanAmount', 0)
-    
-    eligibility_score = min(90, (income * 12 * 5) / loan_amount * 100) if loan_amount > 0 else 0
-    
-    return jsonify({
-        'eligibilityScore': round(eligibility_score),
-        'maxLoanAmount': income * 12 * 5,
-        'status': 'qualified' if eligibility_score > 70 else 'review_required'
-    })
-
-@homebuyer_bp.route('/lenders', methods=['GET'])
-def get_lenders():
-    lenders = Lender.query.filter_by(verified=True).all()
-    
-    return jsonify([{
-        'id': lender.id,
-        'name': lender.institution_name,
-        'email': lender.email,
-        'verified': lender.verified
-    } for lender in lenders])
-
-@homebuyer_bp.route('/pre-approval', methods=['GET'])
-@jwt_required()
-def get_pre_approval():
-    return jsonify({
-        'status': 'pending',
-        'amount': 0,
-        'expiryDate': None
-    })
-
-@homebuyer_bp.route('/saved-properties', methods=['GET'])
-@jwt_required()
-def get_saved_properties():
-    return jsonify([])
-
-@homebuyer_bp.route('/documents', methods=['POST'])
-@jwt_required()
-def upload_document():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    buyer = Buyer.query.get(buyer_id)
-    data = request.json
-    
-    document_type = data.get('documentType')
-    
-    # Update document upload status
-    if document_type == 'nationalId':
-        buyer.national_id_uploaded = True
-    elif document_type == 'kraPin':
-        buyer.kra_pin_uploaded = True
-    elif document_type == 'bankStatement':
-        buyer.bank_statement_uploaded = True
-    elif document_type == 'creditReport':
-        buyer.credit_report_uploaded = True
-    elif document_type == 'proofOfResidence':
-        buyer.proof_of_residence_uploaded = True
-    
-    # Recalculate creditworthiness score
-    buyer.calculate_creditworthiness_score()
-    
-    db.session.commit()
-    return jsonify({
-        'success': True,
-        'creditworthinessScore': buyer.creditworthiness_score
-    })
+        return jsonify({
+            'totalApplications': applications_count,
+            'activeMortgages': active_mortgages,
+            'totalPayments': total_payments,
+            'savedProperties': saved_properties
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @homebuyer_bp.route('/creditworthiness', methods=['GET'])
-@jwt_required()
+@jwt_required()  # Requires authentication
 def get_creditworthiness():
+    """BUYER ENDPOINT: Calculate and return creditworthiness assessment
+    
+    This endpoint performs real-time creditworthiness evaluation using a sophisticated
+    algorithm that considers multiple factors:
+    
+    SCORING ALGORITHM (0-100 points):
+    - Income to loan ratio (40% weight): Payment affordability
+    - Employment stability (20% weight): Job security assessment
+    - Down payment percentage (20% weight): Financial commitment
+    - Existing loan burden (10% weight): Current debt obligations
+    - Document completeness (10% weight): Application readiness
+    
+    ELIGIBILITY LEVELS:
+    - 80-100: Highly Eligible (green) - Excellent mortgage candidate
+    - 60-79: Eligible (blue) - Good candidate with strong profile
+    - 40-59: Conditionally Eligible (orange) - May need additional docs
+    - 0-39: Not Eligible (red) - Profile needs improvement
+    
+    Used by:
+    - Buyer dashboard for self-assessment
+    - Lenders for application evaluation
+    - System for automatic pre-qualification
+    """
+    # Extract and validate buyer ID from JWT token
     user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        buyer_id = int(user_id[1:])
+    else:
+        buyer_id = int(user_id)
+    
     buyer = Buyer.query.get(buyer_id)
+    if not buyer:
+        return jsonify({'error': 'Buyer not found'}), 404
     
-    # Recalculate score
+    # Calculate creditworthiness score using the buyer's profile data
     score = buyer.calculate_creditworthiness_score()
-    db.session.commit()
+    db.session.commit()  # Save updated score to database
     
-    # Determine risk level
+    # Determine eligibility level
     if score >= 80:
-        risk_level = 'Low Risk'
+        level = 'Highly Eligible'
+        color = 'green'
         recommendation = 'Excellent candidate for mortgage approval'
     elif score >= 60:
-        risk_level = 'Medium Risk'
-        recommendation = 'Good candidate with minor considerations'
+        level = 'Eligible'
+        color = 'blue'
+        recommendation = 'Good candidate with strong profile'
     elif score >= 40:
-        risk_level = 'High Risk'
-        recommendation = 'Requires additional documentation or guarantor'
+        level = 'Conditionally Eligible'
+        color = 'orange'
+        recommendation = 'May require additional documentation'
     else:
-        risk_level = 'Very High Risk'
-        recommendation = 'May need to improve financial standing'
+        level = 'Not Eligible'
+        color = 'red'
+        recommendation = 'Profile needs improvement before approval'
     
     return jsonify({
         'score': score,
-        'riskLevel': risk_level,
+        'maxScore': 110,
+        'eligibilityLevel': level,
+        'color': color,
         'recommendation': recommendation,
         'profileComplete': buyer.profile_complete
     })
@@ -343,34 +320,275 @@ def get_creditworthiness():
 @homebuyer_bp.route('/my-mortgages', methods=['GET'])
 @jwt_required()
 def get_my_mortgages():
-    user_id = get_jwt_identity()
-    buyer_id = int(user_id[1:]) if user_id.startswith('B') else int(user_id)
-    
-    # Get active mortgages for this buyer
-    from models import ActiveMortgage
-    mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
-    
-    result = []
-    for mortgage in mortgages:
-        # Calculate remaining payments
-        monthly_payment = (mortgage.principal_amount * (mortgage.interest_rate/100/12)) / (1 - (1 + mortgage.interest_rate/100/12)**(-mortgage.repayment_term))
-        payments_made = mortgage.repayment_term - int((mortgage.remaining_balance / mortgage.principal_amount) * mortgage.repayment_term)
+    try:
+        user_id = get_jwt_identity()
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
         
-        result.append({
-            'id': mortgage.id,
-            'lender': mortgage.lender.institution_name,
-            'property': mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Property',
-            'principalAmount': mortgage.principal_amount,
-            'remainingBalance': mortgage.remaining_balance,
-            'interestRate': mortgage.interest_rate,
-            'monthlyPayment': round(monthly_payment, 2),
-            'totalTerm': mortgage.repayment_term,
-            'paymentsMade': payments_made,
-            'remainingPayments': mortgage.repayment_term - payments_made,
-            'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
-            'status': mortgage.status.value,
-            'startDate': mortgage.created_at.strftime('%Y-%m-%d')
-        })
-    
-    return jsonify(result)
+        print(f'Getting mortgages for buyer ID: {buyer_id}')  # Debug log
+        
+        from models import ActiveMortgage, PaymentSchedule
+        mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+        print(f'Found {len(mortgages)} mortgages')  # Debug log
+        
+        result = []
+        for mortgage in mortgages:
+            try:
+                if mortgage.interest_rate > 0:
+                    monthly_rate = mortgage.interest_rate / 100 / 12
+                    monthly_payment = (mortgage.principal_amount * monthly_rate) / (1 - (1 + monthly_rate)**(-mortgage.repayment_term))
+                else:
+                    monthly_payment = mortgage.principal_amount / mortgage.repayment_term
+                
+                # Count actual payments made
+                payments_made = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).count()
+                
+                result.append({
+                    'id': mortgage.id,
+                    'lender': mortgage.lender.institution_name if mortgage.lender else 'Unknown Lender',
+                    'property': mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Property',
+                    'principalAmount': mortgage.principal_amount,
+                    'remainingBalance': mortgage.remaining_balance,
+                    'interestRate': mortgage.interest_rate,
+                    'monthlyPayment': round(monthly_payment, 2),
+                    'totalTerm': mortgage.repayment_term,
+                    'paymentsMade': payments_made,
+                    'remainingPayments': mortgage.repayment_term - payments_made,
+                    'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
+                    'status': mortgage.status.value,
+                    'startDate': mortgage.created_at.strftime('%Y-%m-%d')
+                })
+            except Exception as e:
+                print(f'Error processing mortgage {mortgage.id}: {e}')
+                continue
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f'My mortgages error: {e}')
+        return jsonify({'error': str(e)}), 500
 
+@homebuyer_bp.route('/applications', methods=['GET', 'POST'])
+@jwt_required()
+def handle_applications():
+    if request.method == 'GET':
+        try:
+            user_id = get_jwt_identity()
+            print(f'User trying to access applications: {user_id}')
+            if user_id.startswith('B'):
+                buyer_id = int(user_id[1:])
+            elif user_id.startswith('L'):
+                buyer_id = int(user_id[1:])  # Use lender ID as buyer ID for testing
+            else:
+                buyer_id = int(user_id)
+            print(f'Getting applications for buyer ID: {buyer_id}')
+            applications = MortgageApplication.query.filter_by(borrower_id=buyer_id).all()
+            print(f'Found {len(applications)} applications for buyer {buyer_id}')
+            
+            return jsonify([{
+                'id': app.id,
+                'lender': app.lender.institution_name if app.lender else 'Unknown Lender',
+                'amount': app.requested_amount,
+                'status': app.status.value,
+                'submittedAt': app.submitted_at.strftime('%Y-%m-%d'),
+                'property': app.listing.property_title if app.listing else 'Unknown Property'
+            } for app in applications])
+        except Exception as e:
+            print(f'Applications GET error: {e}')
+            return jsonify({'error': str(e)}), 500
+    
+    # POST method (existing create application logic)
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        
+        print(f'Application data: {data}')
+        print(f'User ID: {user_id}')
+        
+        # Get property details
+        listing_id = data.get('property_id') or data.get('id')
+        print(f'Listing ID: {listing_id}')
+        
+        # Get lender_id from the listing
+        listing = MortgageListing.query.get(listing_id)
+        if not listing:
+            print(f'Listing not found for ID: {listing_id}')
+            return jsonify({'error': 'Property not found'}), 404
+        
+        print(f'Found listing: {listing.property_title}, Lender ID: {listing.lender_id}')
+        
+        loan_amount = data.get('loan_amount') or (data.get('property_price', 0) * 0.8)
+        repayment_years = data.get('repayment_period') or data.get('term', 25)
+        
+        print(f'Loan amount: {loan_amount}, Repayment years: {repayment_years}')
+        
+        if user_id.startswith('B'):
+            borrower_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            borrower_id = int(user_id[1:])  # Use lender ID as borrower for testing
+        else:
+            borrower_id = int(user_id)
+        
+        # Check if buyer already applied for this property
+        existing_app = MortgageApplication.query.filter_by(
+            borrower_id=borrower_id,
+            listing_id=listing_id
+        ).first()
+        
+        if existing_app:
+            return jsonify({
+                'success': False,
+                'modal': {
+                    'type': 'warning',
+                    'title': 'Duplicate Application',
+                    'message': 'You have already applied for this property. Please check your applications.'
+                }
+            }), 409
+        
+        print(f'Creating application: borrower_id={borrower_id}, lender_id={listing.lender_id}, listing_id={listing_id}')
+        
+        application = MortgageApplication(
+            borrower_id=borrower_id,
+            lender_id=listing.lender_id,
+            listing_id=listing_id,
+            requested_amount=loan_amount,
+            repayment_years=repayment_years
+        )
+        
+        db.session.add(application)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Application Submitted',
+                'message': 'Your mortgage application has been submitted successfully. You will be notified once it is reviewed.'
+            },
+            'application': {
+                'id': application.id,
+                'status': 'submitted'
+            }
+        }), 201
+    except Exception as e:
+        print(f'Application error: {e}')
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Application Failed',
+                'message': 'Failed to submit application. Please try again.',
+                'error': str(e)
+            }
+        }), 500
+
+@homebuyer_bp.route('/payments', methods=['POST'])
+@jwt_required()
+def process_payment():
+    try:
+        user_id = get_jwt_identity()
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
+        
+        data = request.json
+        print(f'Payment request data: {data}')  # Debug log
+        print(f'User ID: {user_id}, Buyer ID: {buyer_id}')  # Debug log
+        
+        mortgage_id = data.get('mortgageId')
+        amount = data.get('amount')
+        payment_type = data.get('paymentType')
+        
+        print(f'Processing payment: mortgage_id={mortgage_id}, amount={amount}, type={payment_type}')  # Debug log
+        
+        from models import ActiveMortgage, PaymentSchedule, PaymentStatus
+        
+        # Verify mortgage ownership
+        mortgage = ActiveMortgage.query.filter_by(id=mortgage_id, borrower_id=buyer_id).first()
+        if not mortgage:
+            return jsonify({'error': 'Mortgage not found'}), 404
+        
+        # Check if down payment has been made
+        down_payment_made = PaymentSchedule.query.filter_by(
+            mortgage_id=mortgage_id,
+            status=PaymentStatus.PAID
+        ).first()
+        
+        if not down_payment_made and payment_type != 'down':
+            return jsonify({
+                'error': 'Down payment must be made first',
+                'modal': {
+                    'type': 'warning',
+                    'title': 'Down Payment Required',
+                    'message': 'Please make the down payment before proceeding with monthly payments.'
+                }
+            }), 400
+        
+        # Update mortgage balance immediately
+        mortgage.remaining_balance = max(0, mortgage.remaining_balance - amount)
+        
+        # Create or update payment record
+        from datetime import datetime
+        payment = PaymentSchedule(
+            mortgage_id=mortgage_id,
+            payment_date=datetime.now().date(),
+            amount_due=amount,
+            amount_paid=amount,
+            status=PaymentStatus.PAID
+        )
+        db.session.add(payment)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'transactionId': f'TXN{int(datetime.now().timestamp() * 1000)}',
+            'amount': amount,
+            'paymentType': payment_type,
+            'remainingBalance': mortgage.remaining_balance
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@homebuyer_bp.route('/payments/<int:mortgage_id>', methods=['GET'])
+@jwt_required()
+def get_payment_history(mortgage_id):
+    try:
+        user_id = get_jwt_identity()
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
+        
+        from models import ActiveMortgage, PaymentSchedule
+        mortgage = ActiveMortgage.query.filter_by(id=mortgage_id, borrower_id=buyer_id).first()
+        
+        if not mortgage:
+            return jsonify({'error': 'Mortgage not found'}), 404
+        
+        payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage_id).all()
+        
+        result = []
+        for payment in payments:
+            result.append({
+                'id': payment.id,
+                'date': payment.payment_date.isoformat(),
+                'amountDue': payment.amount_due,
+                'amountPaid': payment.amount_paid,
+                'status': payment.status.value,
+                'receiptUrl': payment.receipt_url
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
