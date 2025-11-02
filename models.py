@@ -1,23 +1,34 @@
-from app import db
-from datetime import datetime
-from werkzeug.security import generate_password_hash, check_password_hash
-from enum import Enum
+# NetLend Backend - Database Models
+# This file defines all database tables, relationships, and business logic
+# Uses SQLAlchemy ORM for database operations and Python Enums for controlled vocabularies
+
+from app import db  # Database instance from main app
+from datetime import datetime  # For timestamp fields
+from werkzeug.security import generate_password_hash, check_password_hash  # Secure password handling
+from enum import Enum  # For creating controlled vocabulary enums
+
+# ENUMERATION CLASSES
+# These define controlled vocabularies for various fields to ensure data consistency
+# and prevent invalid values from being stored in the database
 
 class UserRole(Enum):
-    ADMIN = "admin"
-    LENDER = "lender"
-    HOMEBUYER = "homebuyer"
+    """Defines the three main user types in the system"""
+    ADMIN = "admin"        # Platform administrators
+    LENDER = "lender"      # Financial institutions offering mortgages
+    HOMEBUYER = "homebuyer" # Individuals seeking mortgage financing
 
 class PropertyType(Enum):
-    APARTMENT = "apartment"
-    BUNGALOW = "bungalow"
-    TOWNHOUSE = "townhouse"
-    VILLA = "villa"
+    """Types of properties available for mortgage financing"""
+    APARTMENT = "apartment"   # Multi-unit residential buildings
+    BUNGALOW = "bungalow"     # Single-story detached houses
+    TOWNHOUSE = "townhouse"   # Multi-story attached houses
+    VILLA = "villa"           # Luxury detached houses
 
 class ListingStatus(Enum):
-    ACTIVE = "active"
-    ACQUIRED = "acquired"
-    SOLD = "sold"
+    """Property listing status - tracks the lifecycle of mortgage opportunities"""
+    ACTIVE = "active"       # Available for mortgage applications
+    ACQUIRED = "acquired"   # Property purchased but mortgage not fully paid
+    SOLD = "sold"           # Property fully paid off and mortgage completed
 
 class ApplicationStatus(Enum):
     PENDING = "pending"
@@ -110,15 +121,25 @@ class User(db.Model):
         return check_password_hash(self.password_hash, password)
 
 class Buyer(db.Model):
+    """Homebuyer model - stores comprehensive profile information for mortgage assessment
+    
+    This model contains 34+ fields covering all aspects needed for mortgage evaluation:
+    - Personal information (name, contact, demographics)
+    - Employment and income details
+    - Financial obligations and credit history
+    - Property preferences and loan requirements
+    - Banking information and document verification status
+    """
     __tablename__ = 'buyers'
     
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
-    phone_number = db.Column(db.String(20))
-    verified = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # BASIC ACCOUNT INFORMATION
+    id = db.Column(db.Integer, primary_key=True)  # Unique buyer identifier
+    name = db.Column(db.String(200), nullable=False)  # Full legal name
+    email = db.Column(db.String(120), unique=True, nullable=False)  # Login email (unique)
+    password_hash = db.Column(db.String(255), nullable=False)  # Encrypted password
+    phone_number = db.Column(db.String(20))  # Primary contact number
+    verified = db.Column(db.Boolean, default=False)  # Account verification status
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # Registration timestamp
     
     # Personal Information
     national_id = db.Column(db.String(20))
@@ -175,19 +196,34 @@ class Buyer(db.Model):
         return check_password_hash(self.password_hash, password)
     
     def calculate_creditworthiness_score(self):
-        """Calculate creditworthiness score based on profile data"""
+        """Calculate creditworthiness score based on profile data
+        
+        This algorithm evaluates mortgage eligibility using a weighted scoring system:
+        - Income to loan ratio (40% weight): Measures ability to afford payments
+        - Employment stability (20% weight): Job security assessment
+        - Down payment percentage (20% weight): Financial commitment level
+        - Existing loan burden (10% weight): Current debt obligations
+        - Document completeness (10% weight): Application readiness
+        
+        Returns a score from 0-100, where higher scores indicate better creditworthiness
+        """
         score = 0
         
-        # Income to loan ratio (40% weight)
+        # INCOME TO LOAN RATIO ASSESSMENT (40% of total score)
+        # This is the most important factor - can the buyer afford the monthly payments?
         if self.monthly_net_income and self.desired_loan_amount:
-            monthly_payment = (self.desired_loan_amount * 0.12) / 12  # Rough estimate
+            # Estimate monthly payment using 12% annual interest rate
+            monthly_payment = (self.desired_loan_amount * 0.12) / 12
             income_ratio = monthly_payment / self.monthly_net_income
-            if income_ratio < 0.3:
+            
+            # Score based on payment-to-income ratio (lower is better)
+            if income_ratio < 0.3:      # Less than 30% of income - excellent
                 score += 40
-            elif income_ratio < 0.4:
+            elif income_ratio < 0.4:    # 30-40% of income - good
                 score += 30
-            elif income_ratio < 0.5:
+            elif income_ratio < 0.5:    # 40-50% of income - acceptable
                 score += 20
+            # Above 50% gets 0 points - too risky
         
         # Employment stability (20% weight)
         if self.employment_duration:
@@ -309,6 +345,7 @@ class MortgageListing(db.Model):
     interest_rate = db.Column(db.Float, nullable=False)
     repayment_period = db.Column(db.Integer, nullable=False)  # years
     down_payment = db.Column(db.Float, nullable=False)
+    monthly_payment = db.Column(db.Float)
     eligibility_criteria = db.Column(db.Text)
     images = db.Column(db.JSON)
     status = db.Column(db.Enum(ListingStatus), default=ListingStatus.ACTIVE)
@@ -398,6 +435,20 @@ class PaymentSchedule(db.Model):
             self.mortgage.application.listing.update_status_from_payments()
         
         db.session.commit()
+    
+    def calculate_monthly_payment(listing):
+        """Calculate monthly payment using standard mortgage formula"""
+        loan_amount = float(listing.price_range) - listing.down_payment
+        monthly_rate = listing.interest_rate / 100 / 12
+        num_payments = listing.repayment_period * 12
+        
+        if monthly_rate == 0:
+            monthly_payment = loan_amount / num_payments
+        else:
+            monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate)**num_payments) / ((1 + monthly_rate)**num_payments - 1)
+        
+        listing.monthly_payment = round(monthly_payment, 2)
+        return listing.monthly_payment
 
 class RefinancingOffer(db.Model):
     __tablename__ = 'refinancing_offers'

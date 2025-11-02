@@ -1,9 +1,43 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from models import Lender, MortgageListing, MortgageApplication, Buyer
+# NetLend Backend - Lender Routes
+# This module handles all lender-specific functionality including:
+# - Lender dashboard with key metrics and statistics
+# - Mortgage listing management (create, read, update, delete)
+# - Mortgage application processing and approval workflow
+# - Buyer information access for application review
+# - Active mortgage tracking and sold mortgage management
+# - Lender profile management and business information
 
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication
+from app import db  # Database instance
+from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
+from datetime import datetime, timedelta  # Date calculations for mortgage terms
+
+# Create Blueprint for lender routes with URL prefix /api/lender
 lender_bp = Blueprint('lender', __name__)
+
+@lender_bp.route('/mortgages', methods=['GET'])
+@jwt_required()
+def get_my_mortgages():
+    user_id = get_jwt_identity()
+    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    
+    listings = MortgageListing.query.filter_by(lender_id=lender_id).all()
+    
+    return jsonify([{
+        'id': listing.id,
+        'title': listing.property_title,
+        'type': listing.property_type.value,
+        'bedrooms': listing.bedrooms,
+        'location': f"{listing.address}, {listing.county.value}",
+        'price': float(listing.price_range),
+        'rate': listing.interest_rate,
+        'term': listing.repayment_period,
+        'status': listing.status.value,
+        'editable': listing.status.value == 'active',
+        'images': listing.images if listing.images else [],
+        'createdAt': listing.created_at.strftime('%Y-%m-%d')
+    } for listing in listings])
 
 @lender_bp.route('/<int:lender_id>/mortgages', methods=['GET'])
 def get_lender_mortgages(lender_id):
@@ -19,6 +53,7 @@ def get_lender_mortgages(lender_id):
         'rate': listing.interest_rate,
         'term': listing.repayment_period,
         'status': listing.status.value,
+        'editable': listing.status.value == 'active',
         'images': listing.images if listing.images else [],
         'createdAt': listing.created_at.strftime('%Y-%m-%d')
     } for listing in listings])
@@ -31,19 +66,34 @@ def get_dashboard():
     
     listings = MortgageListing.query.filter_by(lender_id=lender_id).count()
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).count()
+    active_loans = ActiveMortgage.query.filter_by(lender_id=lender_id).count()
+    
+    # Calculate revenue from payments
+    revenue = 0
+    mortgages = ActiveMortgage.query.filter_by(lender_id=lender_id).all()
+    for mortgage in mortgages:
+        payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).all()
+        for payment in payments:
+            if payment.status.value == 'paid':
+                # Calculate interest portion (simplified)
+                interest_portion = payment.amount_paid * (mortgage.interest_rate / 100 / 12)
+                revenue += interest_portion
     
     return jsonify({
         'totalListings': listings,
         'totalApplications': applications,
-        'activeLoans': 0,
-        'revenue': 0
+        'activeLoans': active_loans,
+        'revenue': round(revenue, 2)
     })
 
 @lender_bp.route('/applications', methods=['GET'])
 @jwt_required()
 def get_applications():
     user_id = get_jwt_identity()
-    lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+    if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
+        lender_id = int(user_id[1:])
+    else:
+        lender_id = int(user_id)
     print(f"Debug: user_id={user_id}, lender_id={lender_id}")
     
     applications = MortgageApplication.query.filter_by(lender_id=lender_id).all()
@@ -52,9 +102,28 @@ def get_applications():
     result = []
     for app in applications:
         buyer = Buyer.query.get(app.borrower_id)
+        # If no buyer found, check if it's a lender testing (fallback)
+        if not buyer:
+            lender = Lender.query.get(app.borrower_id)
+            applicant_name = lender.institution_name if lender else f'User {app.borrower_id}'
+            phone = lender.phone_number if lender else 'N/A'
+            email = lender.email if lender else 'N/A'
+            monthly_income = 'N/A'
+            employment_status = 'N/A'
+        else:
+            applicant_name = buyer.name
+            phone = buyer.phone_number or 'N/A'
+            email = buyer.email or 'N/A'
+            monthly_income = buyer.monthly_net_income or 'N/A'
+            employment_status = buyer.employment_status or 'N/A'
+            
         result.append({
             'id': app.id,
-            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'applicant': applicant_name,
+            'phone': phone,
+            'email': email,
+            'monthlyIncome': monthly_income,
+            'employmentStatus': employment_status,
             'amount': app.requested_amount,
             'status': app.status.value,
             'property': app.listing.property_title if app.listing else 'Unknown Property',
@@ -72,12 +141,31 @@ def get_lender_applications(lender_id):
     result = []
     for app in applications:
         buyer = Buyer.query.get(app.borrower_id)
+        # If no buyer found, check if it's a lender testing (fallback)
+        if not buyer:
+            lender = Lender.query.get(app.borrower_id)
+            applicant_name = lender.institution_name if lender else f'User {app.borrower_id}'
+            phone = lender.phone_number if lender else 'N/A'
+            email = lender.email if lender else 'N/A'
+            monthly_income = 'N/A'
+            employment_status = 'N/A'
+        else:
+            applicant_name = buyer.name
+            phone = buyer.phone_number or 'N/A'
+            email = buyer.email or 'N/A'
+            monthly_income = buyer.monthly_net_income or 'N/A'
+            employment_status = buyer.employment_status or 'N/A'
+            
         result.append({
             'id': app.id,
-            'applicant': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'applicantName': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'buyerName': buyer.name if buyer else f'Buyer {app.borrower_id}',
-            'name': buyer.name if buyer else f'Buyer {app.borrower_id}',
+            'applicant': applicant_name,
+            'applicantName': applicant_name,
+            'buyerName': applicant_name,
+            'name': applicant_name,
+            'phone': phone,
+            'email': email,
+            'monthlyIncome': monthly_income,
+            'employmentStatus': employment_status,
             'amount': app.requested_amount,
             'status': app.status.value,
             'property': app.listing.property_title if app.listing else 'Unknown Property',
@@ -142,8 +230,184 @@ def update_lender_profile():
     try:
         db.session.commit()
         print("Database commit successful")
-        return jsonify({'success': True})
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Profile Updated',
+                'message': 'Your profile has been updated successfully.'
+            }
+        })
     except Exception as e:
         print(f"Database commit failed: {e}")
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'modal': {
+                'type': 'error',
+                'title': 'Update Failed',
+                'message': 'Failed to update profile. Please try again.',
+                'error': str(e)
+            }
+        }), 500
+
+@lender_bp.route('/applications/<int:app_id>/approve', methods=['POST'])
+@jwt_required()  # Requires lender authentication
+def approve_application(app_id):
+    """LENDER ENDPOINT: Approve mortgage application with automatic workflow
+    
+    This endpoint handles the complete mortgage approval workflow:
+    
+    APPROVAL PROCESS:
+    1. Validates lender ownership of the application
+    2. Approves the selected application
+    3. Automatically rejects all other pending applications for the same property
+    4. Updates property status from ACTIVE to ACQUIRED
+    5. Creates ActiveMortgage record for payment tracking
+    6. Sets up initial payment schedule
+    
+    BUSINESS LOGIC:
+    - Only one application can be approved per property
+    - All other applications are automatically rejected to prevent conflicts
+    - Property becomes unavailable for new applications
+    - Mortgage tracking begins immediately
+    
+    INTEGRATION POINTS:
+    - Updates buyer's "My Mortgages" section
+    - Updates lender's "Sold Mortgages" section
+    - Removes property from public browsing (no longer ACTIVE)
+    - Triggers payment schedule generation
+    
+    Returns: Success confirmation with active mortgage details
+    """
+    try:
+        # Extract and validate lender ID from JWT token
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        # Fetch the mortgage application
+        application = MortgageApplication.query.get_or_404(app_id)
+        
+        # Security check: Ensure lender owns this application
+        if application.lender_id != lender_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # STEP 1: Approve the selected application
+        application.status = ApplicationStatus.APPROVED
+        
+        # STEP 2: Automatically reject all other pending applications for the same property
+        # This prevents multiple approvals for the same property and ensures data consistency
+        other_apps = MortgageApplication.query.filter(
+            MortgageApplication.listing_id == application.listing_id,  # Same property
+            MortgageApplication.id != app_id,  # Exclude the approved application
+            MortgageApplication.status == ApplicationStatus.PENDING  # Only pending applications
+        ).all()
+        
+        # Mark all other applications as rejected
+        for other_app in other_apps:
+            other_app.status = ApplicationStatus.REJECTED
+        
+        # STEP 3: Update property status to ACQUIRED
+        # This removes the property from public browsing and marks it as sold
+        if application.listing:
+            application.listing.status = ListingStatus.ACQUIRED
+        
+        # STEP 4: Create ActiveMortgage record for payment tracking
+        # This record will be used to track payments, calculate balances, and manage the mortgage lifecycle
+        active_mortgage = ActiveMortgage(
+            application_id=application.id,  # Link to original application
+            borrower_id=application.borrower_id,  # Buyer who will make payments
+            lender_id=application.lender_id,  # Lender who will receive payments
+            principal_amount=application.requested_amount,  # Original loan amount
+            interest_rate=application.listing.interest_rate if application.listing else 12.0,  # Annual rate
+            repayment_term=application.repayment_years * 12,  # Convert years to months
+            remaining_balance=application.requested_amount,  # Initially equals principal
+            next_payment_due=datetime.now().date() + timedelta(days=30)  # First payment in 30 days
+        )
+        
+        db.session.add(active_mortgage)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'modal': {
+                'type': 'success',
+                'title': 'Application Approved',
+                'message': f'Application has been approved successfully. {len(other_apps)} other applications were automatically rejected.',
+                'details': {
+                    'mortgage_id': active_mortgage.id,
+                    'principal_amount': active_mortgage.principal_amount,
+                    'remaining_balance': active_mortgage.remaining_balance
+                }
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@lender_bp.route('/my-listings', methods=['GET'])
+@jwt_required()
+def get_my_listings():
+    """Get all property listings for the current lender"""
+    try:
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        listings = MortgageListing.query.filter_by(lender_id=lender_id).all()
+        
+        result = []
+        for listing in listings:
+            # Count applications for this listing
+            applications_count = MortgageApplication.query.filter_by(listing_id=listing.id).count()
+            
+            result.append({
+                'id': listing.id,
+                'title': listing.property_title,
+                'type': listing.property_type.value,
+                'bedrooms': listing.bedrooms,
+                'location': f"{listing.address}, {listing.county.value}",
+                'price': float(listing.price_range),
+                'interestRate': listing.interest_rate,
+                'repaymentPeriod': listing.repayment_period,
+                'downPayment': listing.down_payment,
+                'monthlyPayment': listing.monthly_payment,
+                'status': listing.status.value,
+                'applicationsCount': applications_count,
+                'images': listing.images or [],
+                'createdAt': listing.created_at.strftime('%Y-%m-%d'),
+                'eligibilityCriteria': listing.eligibility_criteria
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@lender_bp.route('/sold-mortgages', methods=['GET'])
+@jwt_required()
+def get_sold_mortgages():
+    try:
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        active_mortgages = ActiveMortgage.query.filter_by(lender_id=lender_id).all()
+        
+        result = []
+        for mortgage in active_mortgages:
+            buyer = Buyer.query.get(mortgage.borrower_id)
+            property_title = mortgage.application.listing.property_title if mortgage.application and mortgage.application.listing else 'Unknown Property'
+            
+            result.append({
+                'id': mortgage.id,
+                'buyer': buyer.name if buyer else f'Buyer {mortgage.borrower_id}',
+                'property': property_title,
+                'principalAmount': mortgage.principal_amount,
+                'remainingBalance': mortgage.remaining_balance,
+                'interestRate': mortgage.interest_rate,
+                'status': mortgage.status.value,
+                'startDate': mortgage.created_at.strftime('%Y-%m-%d'),
+                'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

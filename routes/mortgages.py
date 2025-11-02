@@ -1,9 +1,18 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from app import db
-from models import Lender, MortgageListing, ListingStatus
-# from utils.cloudinary import upload_images
+# NetLend Backend - Mortgage Listings Routes
+# This module handles all mortgage listing operations including:
+# - Public mortgage browsing (for homebuyers)
+# - Mortgage creation and management (for lenders)
+# - Property status updates and filtering
+# - CRUD operations for mortgage listings
 
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication decorators
+from app import db  # Database instance
+from models import Lender, MortgageListing, ListingStatus  # Database models
+# from utils.cloudinary import upload_images  # Image upload service (not implemented)
+
+# Create Blueprint for mortgage-related routes
+# This allows modular organization of routes with URL prefix /api/mortgages
 mortgages_bp = Blueprint('mortgages', __name__)
 
 @mortgages_bp.route('/debug', methods=['POST'])
@@ -14,9 +23,27 @@ def debug_mortgage():
 
 @mortgages_bp.route('/', methods=['GET'])
 def get_mortgages():
+    """PUBLIC ENDPOINT: Get paginated list of active mortgage opportunities
+    
+    This endpoint serves the main property browsing functionality for:
+    - Home page "Featured Mortgage Opportunities" section
+    - Buyer dashboard "Browse Properties" section
+    
+    Only shows ACTIVE properties (filters out ACQUIRED and SOLD properties)
+    Supports pagination for better performance with large datasets
+    
+    Query Parameters:
+    - page: Page number (default: 1)
+    - per_page: Items per page (default: 10)
+    
+    Returns: Paginated list of mortgage listings with comprehensive property details
+    """
+    # Extract pagination parameters from query string
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     
+    # Query only ACTIVE listings (available for purchase)
+    # This ensures buyers only see properties they can actually apply for
     mortgages = MortgageListing.query.filter_by(status=ListingStatus.ACTIVE).paginate(
         page=page, per_page=per_page, error_out=False
     )
@@ -43,11 +70,41 @@ def get_mortgages():
     }), 200
 
 @mortgages_bp.route('/', methods=['POST'])
+@jwt_required()  # Requires valid JWT token
 def create_mortgage():
+    """LENDER ENDPOINT: Create new mortgage listing
+    
+    This endpoint allows authenticated lenders to create new property listings
+    for mortgage financing. The property will be associated with the lender's account
+    and appear in their "My Listings" dashboard.
+    
+    Authentication: Requires JWT token with lender credentials
+    
+    Request Body: JSON with property details including:
+    - subject: Property title/name
+    - property_type: apartment, bungalow, townhouse, villa
+    - bedrooms: Number of bedrooms
+    - address: Property address
+    - county: Kenyan county location
+    - price_range: Property price in KSH
+    - interest_rate: Annual interest rate percentage
+    - repayment_period: Loan term in years
+    - down_payment: Required down payment amount
+    - description: Property description (max 100 characters)
+    - eligibility_criteria: Loan eligibility requirements
+    - images: Array of property image URLs
+    
+    Returns: Success message with created listing ID
+    """
     try:
-        lender_id = 1  # Hardcoded for testing
+        # Extract lender ID from JWT token
+        # Token format: "L{lender_id}" for lenders, "U{user_id}" for legacy users
+        user_id = get_jwt_identity()
+        lender_id = int(user_id[1:]) if user_id.startswith('L') else int(user_id)
+        
+        # Parse JSON request body
         data = request.get_json()
-        print(f"Creating mortgage with data: {data}")  # Debug log
+        print(f"Creating mortgage with data: {data}")  # Debug log for development
         
         mortgage = MortgageListing(
             property_title=data.get('subject', 'Default Title'),

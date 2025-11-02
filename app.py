@@ -1,33 +1,41 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-from flask_cors import CORS
-from flask_mail import Mail
-from functools import wraps
-from datetime import datetime, timedelta
-from config import Config
+# NetLend Backend - Main Application File
+# This file sets up the Flask application, configures extensions, and defines core authentication routes
 
-# Initialize extensions
-db = SQLAlchemy()
-migrate = Migrate()
-jwt = JWTManager()
-mail = Mail()
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy  # ORM for database operations
+from flask_migrate import Migrate  # Database schema versioning
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity  # JWT authentication
+from flask_cors import CORS  # Cross-origin resource sharing for frontend communication
+from flask_mail import Mail  # Email functionality (configured but not actively used)
+from functools import wraps  # Decorator utilities
+from datetime import datetime, timedelta  # Date/time handling
+from config import Config  # Application configuration
+
+# Initialize Flask extensions - these will be configured when the app is created
+db = SQLAlchemy()  # Database ORM instance
+migrate = Migrate()  # Database migration manager
+jwt = JWTManager()  # JWT token manager
+mail = Mail()  # Email service manager
 
 def create_app():
+    """Application factory pattern - creates and configures Flask application instance"""
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object(Config)  # Load configuration from config.py
     
-    # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    jwt.init_app(app)
-    mail.init_app(app)
+    # Initialize extensions with the app instance
+    # This pattern allows for multiple app instances and easier testing
+    db.init_app(app)  # Configure SQLAlchemy with app
+    migrate.init_app(app, db)  # Set up database migrations
+    jwt.init_app(app)  # Configure JWT authentication
+    mail.init_app(app)  # Set up email service
 
-    # Configure CORS
+    # Configure CORS (Cross-Origin Resource Sharing)
+    # This allows the frontend (React/Vue) to communicate with the backend API
+    # from different ports/domains during development
     CORS(
         app,
         origins=[
+<<<<<<< HEAD
             'http://localhost:5173',
             'http://127.0.0.1:5173',
             'http://localhost:3000',
@@ -35,10 +43,17 @@ def create_app():
             'https://*.onrender.com',
             'https://*.netlify.app',
             'https://*.vercel.app'
+=======
+            'http://localhost:5173',  # Vite dev server (React/Vue)
+            'http://127.0.0.1:5173',  # Alternative localhost format
+            'http://localhost:3000',  # Create React App default port
+            'http://localhost:3001'   # Alternative React port
+>>>>>>> 9bf88590d110efe18082e2aeacc112f4363ae20c
         ],
-        supports_credentials=True,
-        allow_headers=['Content-Type', 'Authorization'],
-        methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
+        supports_credentials=True,  # Allow cookies and auth headers
+        allow_headers=['Content-Type', 'Authorization', 'Accept'],  # Permitted request headers
+        methods=['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],  # Allowed HTTP methods
+        expose_headers=['Content-Type', 'Authorization']  # Headers exposed to frontend
     )
 
     # Import and register blueprints
@@ -105,20 +120,36 @@ def create_app():
         return decorator
 
     # Auth endpoints
+    # AUTHENTICATION ENDPOINTS
+    # These routes handle user login, registration, and token validation
+    # The system supports 4 user types: Buyers (B), Lenders (L), Admins (A), and Legacy Users (U)
+    
     @app.route('/api/login', methods=['POST'])
     def login():
+        """Universal login endpoint that checks all user tables and returns appropriate JWT token"""
         data = request.json
         email = data.get('email')
         password = data.get('password')
         
+        # Basic validation
         if not email:
-            return jsonify({"success": False, "error": "Email required"}), 400
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "error",
+                    "title": "Login Failed",
+                    "message": "Email is required to login."
+                }
+            }), 400
         
+        # Import models here to avoid circular imports
         from models import User, Lender, Buyer, Admin
         
-        # Check User table (legacy admin)
+        # Check User table (legacy admin users)
+        # This table contains the original admin users before separate tables were created
         user = User.query.filter_by(email=email).first()
         if user and password and user.check_password(password):
+            # Create JWT token with 'U' prefix to identify legacy users
             token = create_access_token(identity=f"U{user.id}")
             return jsonify({
                 "success": True,
@@ -126,10 +157,10 @@ def create_app():
                     "id": user.id,
                     "name": user.name,
                     "email": user.email,
-                    "userType": user.role.value,
+                    "userType": user.role.value,  # admin, lender, or homebuyer
                     "verified": user.verified
                 },
-                "token": token
+                "token": token  # JWT token for subsequent API calls
             })
         
         # Check Buyer table
@@ -180,7 +211,14 @@ def create_app():
                 "token": token
             })
         
-        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+        return jsonify({
+            "success": False,
+            "modal": {
+                "type": "error",
+                "title": "Login Failed",
+                "message": "Invalid email or password. Please try again."
+            }
+        }), 401
 
     @app.route('/api/register', methods=['POST'])
     def register():
@@ -191,7 +229,14 @@ def create_app():
         user_type = data.get('userType', 'lender')
         
         if not name or not email:
-            return jsonify({"success": False, "error": "Name and email are required"}), 400
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "error",
+                    "title": "Registration Failed",
+                    "message": "Name and email are required for registration."
+                }
+            }), 400
         
         from models import User, UserRole, Lender, Buyer, Admin
         
@@ -200,7 +245,14 @@ def create_app():
             Lender.query.filter_by(email=email).first() or
             Buyer.query.filter_by(email=email).first() or
             Admin.query.filter_by(email=email).first()):
-            return jsonify({"success": False, "error": "User already exists"}), 409
+            return jsonify({
+                "success": False,
+                "modal": {
+                    "type": "warning",
+                    "title": "Registration Failed",
+                    "message": "An account with this email already exists. Please login instead."
+                }
+            }), 409
         
         if user_type in ['homebuyer', 'buyer']:
             # Create in Buyer table
@@ -302,6 +354,15 @@ def create_app():
     def health_check():
         return jsonify({"status": "healthy", "message": "NetLend API is running"})
     
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = jsonify()
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            response.headers.add('Access-Control-Allow-Headers', "*")
+            response.headers.add('Access-Control-Allow-Methods', "*")
+            return response
+    
     @app.route('/api/debug/admin', methods=['GET'])
     def debug_admin():
         """Debug endpoint to test admin functionality"""
@@ -327,6 +388,46 @@ def create_app():
             'term': listing.repayment_period,
             'maxAmount': float(listing.price_range)
         } for listing in listings])
+    
+    @app.route('/api/applications', methods=['POST'])
+    @jwt_required()
+    def create_application():
+        try:
+            user_id = get_jwt_identity()
+            data = request.json
+            
+            print(f'Application data: {data}')  # Debug log
+            print(f'User ID: {user_id}')  # Debug log
+            
+            from models import MortgageApplication
+            
+            # Get property details
+            listing_id = data.get('id')
+            loan_amount = data.get('price', 0) * 0.8  # 80% of property price
+            repayment_years = data.get('term', 25)
+            
+            # Get lender_id from the listing
+            from models import MortgageListing
+            listing = MortgageListing.query.get(listing_id)
+            if not listing:
+                return jsonify({'error': 'Property not found'}), 404
+            
+            application = MortgageApplication(
+                borrower_id=int(user_id[1:]) if user_id.startswith('B') else int(user_id),
+                lender_id=listing.lender_id,
+                listing_id=listing_id,
+                requested_amount=loan_amount,
+                repayment_years=repayment_years
+            )
+            
+            db.session.add(application)
+            db.session.commit()
+            
+            return jsonify({'id': application.id, 'status': 'submitted'}), 201
+        except Exception as e:
+            print(f'Application error: {e}')
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
     
     @app.route('/docs')
     def swagger_docs():
