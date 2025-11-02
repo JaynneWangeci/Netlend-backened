@@ -35,10 +35,20 @@ def create_app():
     CORS(
         app,
         origins=[
+<<<<<<< HEAD
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'https://*.onrender.com',
+            'https://*.netlify.app',
+            'https://*.vercel.app'
+=======
             'http://localhost:5173',  # Vite dev server (React/Vue)
             'http://127.0.0.1:5173',  # Alternative localhost format
             'http://localhost:3000',  # Create React App default port
             'http://localhost:3001'   # Alternative React port
+>>>>>>> 9bf88590d110efe18082e2aeacc112f4363ae20c
         ],
         supports_credentials=True,  # Allow cookies and auth headers
         allow_headers=['Content-Type', 'Authorization', 'Accept'],  # Permitted request headers
@@ -441,10 +451,10 @@ def create_app():
 
     return app
 
+import os
+
 if __name__ == '__main__':
     app = create_app()
-    print("🚀 NetLend Backend Starting...")
-    print("📍 API: http://localhost:5000")
-    print("📚 Docs: http://localhost:5000/docs")
-    print("💚 Health: http://localhost:5000/health")
-    app.run(debug=True, port=5001, host='0.0.0.0')
+    port = int(os.environ.get("PORT", 5000))
+    print(f"🚀 NetLend Backend Starting on port {port}...")
+    app.run(debug=False, host='0.0.0.0', port=port)

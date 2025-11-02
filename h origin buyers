@@ -1,0 +1,27 @@
+[33ma6e4181[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mbuyers[m[33m)[m Set up borrower model, PostgreSQL connection, and data validation
+[33m147aef4[m Add package.json file
+[33ma0ade4b[m[33m ([m[1;31morigin/lenders-admin[m[33m, [m[1;32mmain[m[33m)[m Ensures that houses from the Home page fetch their data from the backend
+[33m9235390[m Ensures that houses from the Home page fetch their data from the backend
+[33m824c6b7[m Adds columns to the buyers table, allows for editing of lender profiles
+[33m8559f56[m[33m ([m[1;31morigin/restore-lender-details[m[33m)[m Add comprehensive lender details for admin access
+[33m8b0600d[m Creates seed.py, Ensures applications are visible to lenders and admins
+[33m6b47a0e[m Replaces PUT requests with PAT CH requests, Adds a 'View More' button to the properties section on the lenders dashboard
+[33ma27de8b[m Adds bedroom field for houses, adds route for mortgage applications
+[33mf598f59[m[33m ([m[1;31morigin/buyers-lenders[m[33m)[m Ensures the correct number of users is displayed on the 'active users' section
+[33ma0a92c9[m Ensures correct fetching and filtering of user data on the admin dashboard
+[33m8d292c7[m Ensures successful login/signup functionality for buyers
+[33mc6a20b5[m Ensures correct data is seen on the admin dashboard
+[33m8f392d4[m Merge: Integrate admin functionality with lender backend
+[33m20ce21a[m[33m ([m[1;31morigin/Admin-Backend[m[33m)[m Successful pull request
+[33mb402a41[m Add NetLend Flask backend with JWT auth and admin APIs
+[33m03caa8f[m Ensures Admin gets data from lender endpoints
+[33m06ce918[m Adjusts route for admins
+[33mbae6826[m Merged lenders and Admin-Backend app.py cleanly
+[33md566c03[m Backend with JWT auth and admin endpoints
+[33m1a131d0[m Ensures users are directed to lenders dashboard on signing up, allows for registration and display of mortgages
+[33mb0d187a[m Changes currency to KSH, adds address and county fields to the database
+[33m4b743d8[m Enables user registration for lenders
+[33md342248[m Adds tables for refinancing, analytics, updates database columns
+[33m6dab2f7[m Sets up SQLite databse
+[33md6374cc[m Creates backend files for lender-related roles
+[33m0d2dd30[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;31morigin/Buyers[m[33m)[m Initial commit
