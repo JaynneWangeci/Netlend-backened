@@ -515,6 +515,22 @@ def process_payment():
         if not mortgage:
             return jsonify({'error': 'Mortgage not found'}), 404
         
+        # Check if down payment has been made
+        down_payment_made = PaymentSchedule.query.filter_by(
+            mortgage_id=mortgage_id,
+            status=PaymentStatus.PAID
+        ).first()
+        
+        if not down_payment_made and payment_type != 'down':
+            return jsonify({
+                'error': 'Down payment must be made first',
+                'modal': {
+                    'type': 'warning',
+                    'title': 'Down Payment Required',
+                    'message': 'Please make the down payment before proceeding with monthly payments.'
+                }
+            }), 400
+        
         # Update mortgage balance immediately
         mortgage.remaining_balance = max(0, mortgage.remaining_balance - amount)
         
