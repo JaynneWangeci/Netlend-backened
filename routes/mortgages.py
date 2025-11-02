@@ -111,7 +111,7 @@ def create_mortgage():
             property_type=data.get('property_type', 'apartment').upper(),
             bedrooms=data.get('bedrooms', 3),
             address=data.get('address', 'Default Address'),
-            county=data.get('county', 'Nairobi').upper().replace(' ', '_'),
+            county=data.get('county', 'Nairobi').upper().replace(' ', '_').replace("'", '_'),
             price_range=data.get('price_range', 1000000),
             interest_rate=data.get('interest_rate', 12.0),
             repayment_period=data.get('repayment_period', 25),
