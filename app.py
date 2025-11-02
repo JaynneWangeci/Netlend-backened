@@ -35,7 +35,6 @@ def create_app():
     CORS(
         app,
         origins=[
-<<<<<<< HEAD
             'http://localhost:5173',
             'http://127.0.0.1:5173',
             'http://localhost:3000',
@@ -43,12 +42,6 @@ def create_app():
             'https://*.onrender.com',
             'https://*.netlify.app',
             'https://*.vercel.app'
-=======
-            'http://localhost:5173',  # Vite dev server (React/Vue)
-            'http://127.0.0.1:5173',  # Alternative localhost format
-            'http://localhost:3000',  # Create React App default port
-            'http://localhost:3001'   # Alternative React port
->>>>>>> 9bf88590d110efe18082e2aeacc112f4363ae20c
         ],
         supports_credentials=True,  # Allow cookies and auth headers
         allow_headers=['Content-Type', 'Authorization', 'Accept'],  # Permitted request headers
@@ -450,7 +443,6 @@ def create_app():
         </body></html>'''
 
     return app
-
 import os
 
 if __name__ == '__main__':
