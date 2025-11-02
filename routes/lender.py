@@ -12,6 +12,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity  # Authentication
 from app import db  # Database instance
 from models import Lender, MortgageListing, MortgageApplication, Buyer, ApplicationStatus, ActiveMortgage, ListingStatus
 from datetime import datetime, timedelta  # Date calculations for mortgage terms
+from dateutil.relativedelta import relativedelta  # For monthly date calculations
 
 # Create Blueprint for lender routes with URL prefix /api/lender
 lender_bp = Blueprint('lender', __name__)
@@ -322,10 +323,54 @@ def approve_application(app_id):
             interest_rate=application.listing.interest_rate if application.listing else 12.0,  # Annual rate
             repayment_term=application.repayment_years * 12,  # Convert years to months
             remaining_balance=application.requested_amount,  # Initially equals principal
-            next_payment_due=datetime.now().date() + timedelta(days=30)  # First payment in 30 days
+            next_payment_due=datetime.now().date() + timedelta(days=7)  # Down payment due in 7 days
         )
         
         db.session.add(active_mortgage)
+        db.session.flush()  # Get the mortgage ID
+        
+        # STEP 5: Create payment schedule starting with down payment
+        from models import PaymentSchedule, PaymentStatus
+        from dateutil.relativedelta import relativedelta
+        
+        # Create down payment as first payment
+        down_payment = PaymentSchedule(
+            mortgage_id=active_mortgage.id,
+            payment_date=datetime.now().date() + timedelta(days=7),  # Due in 7 days
+            amount_due=application.listing.down_payment if application.listing else application.requested_amount * 0.2,
+            status=PaymentStatus.PENDING
+        )
+        db.session.add(down_payment)
+        
+        # Calculate monthly payment amount
+        loan_amount = application.requested_amount
+        monthly_rate = active_mortgage.interest_rate / 100 / 12
+        num_payments = active_mortgage.repayment_term
+        
+        if monthly_rate == 0:
+            monthly_payment = loan_amount / num_payments
+        else:
+            monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate)**num_payments) / ((1 + monthly_rate)**num_payments - 1)
+        
+        # Create monthly payment schedule
+        base_date = datetime.now().date()
+        for month in range(1, active_mortgage.repayment_term + 1):
+            # Calculate the last day of each month
+            next_month = base_date + relativedelta(months=month)
+            # Get last day of the month
+            last_day_of_month = (next_month.replace(day=1) + relativedelta(months=1) - timedelta(days=1))
+            
+            monthly_payment_schedule = PaymentSchedule(
+                mortgage_id=active_mortgage.id,
+                payment_date=last_day_of_month,
+                amount_due=round(monthly_payment, 2),
+                status=PaymentStatus.PENDING
+            )
+            db.session.add(monthly_payment_schedule)
+        
+        # Update next payment due to down payment date
+        active_mortgage.next_payment_due = down_payment.payment_date
+        
         db.session.commit()
         
         return jsonify({

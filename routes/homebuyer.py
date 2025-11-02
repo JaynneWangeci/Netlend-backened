@@ -20,6 +20,23 @@ homebuyer_bp = Blueprint('homebuyer', __name__)
 def test_applications():
     return jsonify({'message': 'Applications endpoint working', 'data': request.json})
 
+@homebuyer_bp.route('/test-payment', methods=['POST'])
+@jwt_required()
+def test_payment():
+    """Test endpoint to verify payment processing is working"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.json
+        print(f'Test payment data: {data}')
+        return jsonify({
+            'success': True,
+            'message': 'Payment test endpoint working',
+            'user_id': user_id,
+            'received_data': data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @homebuyer_bp.route('/profile', methods=['GET'])
 @jwt_required()  # Requires valid JWT token
 def get_profile():
@@ -312,8 +329,11 @@ def get_my_mortgages():
         else:
             buyer_id = int(user_id)
         
+        print(f'Getting mortgages for buyer ID: {buyer_id}')  # Debug log
+        
         from models import ActiveMortgage, PaymentSchedule
         mortgages = ActiveMortgage.query.filter_by(borrower_id=buyer_id).all()
+        print(f'Found {len(mortgages)} mortgages')  # Debug log
         
         result = []
         for mortgage in mortgages:
@@ -465,3 +485,110 @@ def handle_applications():
                 'error': str(e)
             }
         }), 500
+
+@homebuyer_bp.route('/payments', methods=['POST'])
+@jwt_required()
+def process_payment():
+    try:
+        user_id = get_jwt_identity()
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
+        
+        data = request.json
+        print(f'Payment request data: {data}')  # Debug log
+        print(f'User ID: {user_id}, Buyer ID: {buyer_id}')  # Debug log
+        
+        mortgage_id = data.get('mortgageId')
+        amount = data.get('amount')
+        payment_type = data.get('paymentType')
+        
+        print(f'Processing payment: mortgage_id={mortgage_id}, amount={amount}, type={payment_type}')  # Debug log
+        
+        from models import ActiveMortgage, PaymentSchedule, PaymentStatus
+        
+        # Verify mortgage ownership
+        mortgage = ActiveMortgage.query.filter_by(id=mortgage_id, borrower_id=buyer_id).first()
+        if not mortgage:
+            return jsonify({'error': 'Mortgage not found'}), 404
+        
+        # Check if down payment has been made
+        down_payment_made = PaymentSchedule.query.filter_by(
+            mortgage_id=mortgage_id,
+            status=PaymentStatus.PAID
+        ).first()
+        
+        if not down_payment_made and payment_type != 'down':
+            return jsonify({
+                'error': 'Down payment must be made first',
+                'modal': {
+                    'type': 'warning',
+                    'title': 'Down Payment Required',
+                    'message': 'Please make the down payment before proceeding with monthly payments.'
+                }
+            }), 400
+        
+        # Update mortgage balance immediately
+        mortgage.remaining_balance = max(0, mortgage.remaining_balance - amount)
+        
+        # Create or update payment record
+        from datetime import datetime
+        payment = PaymentSchedule(
+            mortgage_id=mortgage_id,
+            payment_date=datetime.now().date(),
+            amount_due=amount,
+            amount_paid=amount,
+            status=PaymentStatus.PAID
+        )
+        db.session.add(payment)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'transactionId': f'TXN{int(datetime.now().timestamp() * 1000)}',
+            'amount': amount,
+            'paymentType': payment_type,
+            'remainingBalance': mortgage.remaining_balance
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@homebuyer_bp.route('/payments/<int:mortgage_id>', methods=['GET'])
+@jwt_required()
+def get_payment_history(mortgage_id):
+    try:
+        user_id = get_jwt_identity()
+        if user_id.startswith('B'):
+            buyer_id = int(user_id[1:])
+        elif user_id.startswith('L'):
+            buyer_id = int(user_id[1:])  # Use lender ID as buyer for testing
+        else:
+            buyer_id = int(user_id)
+        
+        from models import ActiveMortgage, PaymentSchedule
+        mortgage = ActiveMortgage.query.filter_by(id=mortgage_id, borrower_id=buyer_id).first()
+        
+        if not mortgage:
+            return jsonify({'error': 'Mortgage not found'}), 404
+        
+        payments = PaymentSchedule.query.filter_by(mortgage_id=mortgage_id).all()
+        
+        result = []
+        for payment in payments:
+            result.append({
+                'id': payment.id,
+                'date': payment.payment_date.isoformat(),
+                'amountDue': payment.amount_due,
+                'amountPaid': payment.amount_paid,
+                'status': payment.status.value,
+                'receiptUrl': payment.receipt_url
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

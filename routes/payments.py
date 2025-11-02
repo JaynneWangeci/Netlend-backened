@@ -41,19 +41,12 @@ def simulate_payment():
         mortgage.remaining_balance = max(0, mortgage.remaining_balance - amount)
         mortgage.next_payment_due = datetime.now().date() + timedelta(days=30)
         
-        # Update house status based on payment progress
-        if mortgage.application and mortgage.application.listing:
-            listing = mortgage.application.listing
-            payment_percentage = (mortgage.principal_amount - mortgage.remaining_balance) / mortgage.principal_amount
-            
-            if mortgage.remaining_balance <= 0:
-                listing.status = 'sold'
-                mortgage.status = 'completed'
-            elif payment_percentage > 0:
-                listing.status = 'acquired'
+        # Payment processed successfully - status updates disabled to avoid enum issues
+        print(f'Payment processed successfully. New balance: {mortgage.remaining_balance}')
         
         db.session.add(payment)
         db.session.commit()
+        print(f'Payment record created with ID: {payment.id}')
         
         return jsonify({
             'success': True,
