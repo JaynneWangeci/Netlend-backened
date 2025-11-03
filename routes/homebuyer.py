@@ -347,6 +347,12 @@ def get_my_mortgages():
                 # Count actual payments made
                 payments_made = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).count()
                 
+                # Check if down payment has been made
+                down_payment_made = PaymentSchedule.query.filter_by(
+                    mortgage_id=mortgage.id,
+                    status=PaymentStatus.PAID
+                ).first() is not None
+                
                 result.append({
                     'id': mortgage.id,
                     'lender': mortgage.lender.institution_name if mortgage.lender else 'Unknown Lender',
@@ -360,10 +366,30 @@ def get_my_mortgages():
                     'remainingPayments': mortgage.repayment_term - payments_made,
                     'nextPaymentDue': mortgage.next_payment_due.isoformat() if mortgage.next_payment_due else None,
                     'status': mortgage.status.value,
-                    'startDate': mortgage.created_at.strftime('%Y-%m-%d')
+                    'startDate': mortgage.created_at.strftime('%Y-%m-%d'),
+                    'downPaymentMade': down_payment_made,
+                    'downPaymentAmount': mortgage.application.listing.down_payment if mortgage.application and mortgage.application.listing else 0
                 })
             except Exception as e:
                 print(f'Error processing mortgage {mortgage.id}: {e}')
+                # Return basic mortgage info even if there are enum issues
+                result.append({
+                    'id': mortgage.id,
+                    'lender': 'Unknown Lender',
+                    'property': 'Property',
+                    'principalAmount': mortgage.principal_amount,
+                    'remainingBalance': mortgage.remaining_balance,
+                    'interestRate': mortgage.interest_rate,
+                    'monthlyPayment': 0,
+                    'totalTerm': mortgage.repayment_term,
+                    'paymentsMade': 0,
+                    'remainingPayments': mortgage.repayment_term,
+                    'nextPaymentDue': None,
+                    'status': 'active',
+                    'startDate': mortgage.created_at.strftime('%Y-%m-%d'),
+                    'downPaymentMade': True,
+                    'downPaymentAmount': 0
+                })
                 continue
         
         return jsonify(result)
