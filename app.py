@@ -3,14 +3,15 @@
 
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy  # ORM for database operations
-from flask_migrate import Migrate  # Database schema versioning
+from flask_migrate import Migrate,upgrade  # Database schema versioning
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity  # JWT authentication
 from flask_cors import CORS  # Cross-origin resource sharing for frontend communication
 from flask_mail import Mail  # Email functionality (configured but not actively used)
 from functools import wraps  # Decorator utilities
 from datetime import datetime, timedelta  # Date/time handling
 from config import Config  # Application configuration
-from dotenv import load_dotenv  
+from dotenv import load_dotenv 
+import os 
 load_dotenv()  # Load environment variables from .env file 
 
 # Initialize Flask extensions - these will be configured when the app is created
@@ -23,6 +24,8 @@ def create_app():
     """Application factory pattern - creates and configures Flask application instance"""
     app = Flask(__name__)
     app.config.from_object(Config)  # Load configuration from config.py
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+
     
     
     # Initialize extensions with the app instance
