@@ -13,29 +13,52 @@ from app import db  # Database instance
 from models import User, MortgageApplication, MortgageListing, Lender, Buyer, KenyanCounty, PropertyType  # Models
 from datetime import datetime  # Date handling
 
-# Create Blueprint for homebuyer routes with URL prefix /api/homebuyer
+# CREATE BLUEPRINT FOR HOMEBUYER ROUTES
+# Blueprint allows modular organization of routes with URL prefix /api/homebuyer
+# All routes in this file will be accessible at /api/homebuyer/{route_name}
 homebuyer_bp = Blueprint('homebuyer', __name__)
 
 @homebuyer_bp.route('/test-applications', methods=['POST'])
 def test_applications():
-    return jsonify({'message': 'Applications endpoint working', 'data': request.json})
+    """TEST ENDPOINT: Verify applications endpoint connectivity
+    
+    Simple test endpoint to verify that the applications route is accessible
+    and can receive POST data. Used for debugging and development.
+    
+    Returns: Confirmation message with received data
+    """
+    return jsonify({
+        'message': 'Applications endpoint working',  # Confirmation message
+        'data': request.json                        # Echo back received data
+    })
 
 @homebuyer_bp.route('/test-payment', methods=['POST'])
-@jwt_required()
+@jwt_required()  # Requires authentication for security
 def test_payment():
-    """Test endpoint to verify payment processing is working"""
+    """TEST ENDPOINT: Verify payment processing endpoint connectivity
+    
+    Test endpoint to verify that payment processing routes are working
+    and can receive authenticated requests. Used for debugging payment
+    integration issues without affecting real mortgage data.
+    
+    Returns: Test confirmation with user info and received data
+    """
     try:
+        # GET USER INFORMATION FROM TOKEN
         user_id = get_jwt_identity()
         data = request.json
-        print(f'Test payment data: {data}')
+        
+        print(f'Test payment data: {data}')  # Debug log for development
+        
+        # RETURN TEST CONFIRMATION
         return jsonify({
-            'success': True,
-            'message': 'Payment test endpoint working',
-            'user_id': user_id,
-            'received_data': data
+            'success': True,                    # Test passed
+            'message': 'Payment test endpoint working',  # Confirmation message
+            'user_id': user_id,                # User who made request
+            'received_data': data              # Echo back received data
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500  # Return test error
 
 @homebuyer_bp.route('/profile', methods=['GET'])
 @jwt_required()  # Requires valid JWT token
@@ -99,64 +122,88 @@ def get_profile():
     })
 
 @homebuyer_bp.route('/profile', methods=['PATCH'])
-@jwt_required()
+@jwt_required()  # Requires valid JWT token for authentication
 def update_profile():
+    """BUYER ENDPOINT: Update buyer profile information
+    
+    This endpoint allows authenticated buyers to update their profile data.
+    The profile data is used for:
+    - Creditworthiness assessment
+    - Mortgage application pre-filling
+    - Lender decision making
+    - Profile completion tracking
+    
+    Supports partial updates - only provided fields are updated.
+    Automatically recalculates creditworthiness score after updates.
+    
+    Returns: Success/error response with updated profile completion status
+    """
     try:
+        # Extract buyer ID from JWT token (supports multiple token formats)
         user_id = get_jwt_identity()
         if isinstance(user_id, str) and len(user_id) > 1 and user_id[0] in ['L', 'B', 'A', 'U']:
-            buyer_id = int(user_id[1:])
+            buyer_id = int(user_id[1:])  # Extract numeric ID from prefixed token
         else:
-            buyer_id = int(user_id)
+            buyer_id = int(user_id)  # Handle non-prefixed tokens
+            
+        # Fetch buyer record from database
         buyer = Buyer.query.get(buyer_id)
         
         if not buyer:
             return jsonify({'error': 'Buyer not found'}), 404
             
+        # Parse request data
         data = request.json
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
-        print(f'Profile update data received: {data}')  # Debug log
+        print(f'Profile update data received: {data}')  # Debug log for development
         
-        # Personal Information
+        # PERSONAL INFORMATION UPDATES
+        # These fields are used for identity verification and demographic analysis
         if 'name' in data:
-            buyer.name = data['name']
+            buyer.name = data['name']  # Full legal name for mortgage documents
         if 'phoneNumber' in data:
-            buyer.phone_number = data['phoneNumber']
+            buyer.phone_number = data['phoneNumber']  # Primary contact for notifications
         if 'nationalId' in data:
-            buyer.national_id = data['nationalId']
+            buyer.national_id = data['nationalId']  # Government ID for verification
         if 'gender' in data:
-            buyer.gender = data['gender']
+            buyer.gender = data['gender']  # Demographic information
         if 'maritalStatus' in data:
-            buyer.marital_status = data['maritalStatus']
+            buyer.marital_status = data['maritalStatus']  # Affects loan eligibility
         if 'dependents' in data:
-            buyer.dependents = int(data['dependents']) if data['dependents'] else 0
+            buyer.dependents = int(data['dependents']) if data['dependents'] else 0  # Financial obligations
         
-        # Employment & Income
+        # EMPLOYMENT & INCOME UPDATES
+        # Critical for creditworthiness assessment and loan approval
         if 'employmentStatus' in data:
-            buyer.employment_status = data['employmentStatus']
+            buyer.employment_status = data['employmentStatus']  # Job stability indicator
         if 'employerName' in data:
-            buyer.employer_name = data['employerName'] if data['employerName'] else None
+            buyer.employer_name = data['employerName'] if data['employerName'] else None  # Employment verification
         if 'monthlyGrossIncome' in data:
-            buyer.monthly_gross_income = float(data['monthlyGrossIncome']) if data['monthlyGrossIncome'] else None
+            buyer.monthly_gross_income = float(data['monthlyGrossIncome']) if data['monthlyGrossIncome'] else None  # Total income before deductions
         if 'monthlyNetIncome' in data:
-            buyer.monthly_net_income = float(data['monthlyNetIncome']) if data['monthlyNetIncome'] else None
+            buyer.monthly_net_income = float(data['monthlyNetIncome']) if data['monthlyNetIncome'] else None  # Take-home pay for affordability calculation
         
-        # Banking Information
+        # BANKING INFORMATION UPDATES
+        # Used for payment processing and financial verification
         if 'bankName' in data:
-            buyer.bank_name = data['bankName']
+            buyer.bank_name = data['bankName']  # Primary bank for loan disbursement
         if 'accountNumber' in data:
-            buyer.account_number = data['accountNumber']
+            buyer.account_number = data['accountNumber']  # Account for fund transfers
+        # Handle multiple field names for M-Pesa number (frontend compatibility)
         if 'mpesaNumber' in data:
-            buyer.mpesa_number = data['mpesaNumber']
+            buyer.mpesa_number = data['mpesaNumber']  # Mobile money for payments
         if 'mpesa_number' in data:
-            buyer.mpesa_number = data['mpesa_number']
+            buyer.mpesa_number = data['mpesa_number']  # Alternative field name
         if 'mpesa' in data:
-            buyer.mpesa_number = data['mpesa']
+            buyer.mpesa_number = data['mpesa']  # Short field name
         
-        # Calculate creditworthiness score
+        # CREDITWORTHINESS SCORE RECALCULATION
+        # Automatically recalculate score after profile updates
+        # This ensures lenders always see the most current assessment
         if buyer.calculate_creditworthiness_score:
-            buyer.calculate_creditworthiness_score()
+            buyer.calculate_creditworthiness_score()  # Updates buyer.creditworthiness_score field
         
         db.session.add(buyer)
         db.session.commit()
@@ -344,8 +391,12 @@ def get_my_mortgages():
                 else:
                     monthly_payment = mortgage.principal_amount / mortgage.repayment_term
                 
-                # Count actual payments made
-                payments_made = PaymentSchedule.query.filter_by(mortgage_id=mortgage.id).count()
+                # Count actual payments made (PAID status only)
+                from models import PaymentStatus
+                payments_made = PaymentSchedule.query.filter_by(
+                    mortgage_id=mortgage.id,
+                    status=PaymentStatus.PAID
+                ).count()
                 
                 # Check if down payment has been made
                 down_payment_made = PaymentSchedule.query.filter_by(
@@ -617,4 +668,4 @@ def get_payment_history(mortgage_id):
         
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500  # Return error response for payment history
